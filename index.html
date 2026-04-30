@@ -1,0 +1,1902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Service CRM — Industrial Electrical & Automation</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root { height: 100%; width: 100%; overflow: hidden; }
+    body { background: #0a0e17; }
+    #loading { display:flex; align-items:center; justify-content:center; height:100vh; flex-direction:column; gap:16px; }
+    #loading .spinner { width:40px; height:40px; border:3px solid #1e293b; border-top:3px solid #22d3ee; border-radius:50%; animation:spin .8s linear infinite; }
+    #loading p { color:#64748b; font-size:14px; font-family:system-ui; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="root"><div id="loading"><div class="spinner"></div><p>Loading Service CRM...</p></div></div>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef, useMemo } = React;
+
+
+// ─── SEED DATA ──────────────────────────────────────────────────────────────
+const ROLES = { ADMIN: "admin", MANAGER: "manager", FRONT_DESK: "front_desk", TECHNICIAN: "technician" };
+const ROLE_LABELS = { admin: "Admin", manager: "Manager", front_desk: "Front Desk", technician: "Technician" };
+
+const STATUS_FLOW = ["Created", "Assigned", "In Inspection", "Estimate Sent", "In Progress", "Completed", "Delivered"];
+const STATUS_COLORS = {
+  Created: "#6366f1", Assigned: "#f59e0b", "In Inspection": "#3b82f6",
+  "Estimate Sent": "#8b5cf6", "In Progress": "#f97316", Completed: "#10b981", Delivered: "#6b7280"
+};
+
+const SERVICE_TYPES = ["Carry-In", "On-Site"];
+
+// Industrial Electrical & Automation Product Categories
+const DEVICE_CATEGORIES = [
+  { id: "dc1", name: "VFD / AC Drive", icon: "⚡" },
+  { id: "dc2", name: "PLC / Controller", icon: "🔲" },
+  { id: "dc3", name: "HMI / Touch Panel", icon: "🖥️" },
+  { id: "dc4", name: "Servo Motor / Drive", icon: "⚙️" },
+  { id: "dc5", name: "Soft Starter", icon: "🔌" },
+  { id: "dc6", name: "UPS / Inverter", icon: "🔋" },
+  { id: "dc7", name: "SMPS / Power Supply", icon: "🔧" },
+  { id: "dc8", name: "Industrial Motor", icon: "🏭" },
+  { id: "dc9", name: "Control Panel", icon: "📦" },
+  { id: "dc10", name: "Sensor / Transmitter", icon: "📡" },
+  { id: "dc11", name: "Circuit Breaker / Switchgear", icon: "🔀" },
+  { id: "dc12", name: "Temperature Controller", icon: "🌡️" },
+  { id: "dc13", name: "Timer / Counter / Relay", icon: "⏱️" },
+  { id: "dc14", name: "Contactor / Overload Relay", icon: "🔗" },
+  { id: "dc15", name: "Energy Meter / Analyzer", icon: "📊" },
+  { id: "dc16", name: "Encoder / Resolver", icon: "🎛️" },
+  { id: "dc17", name: "Thyristor / SCR Unit", icon: "💡" },
+  { id: "dc18", name: "Industrial PC / SCADA", icon: "💻" },
+  { id: "dc19", name: "Other Equipment", icon: "🔩" },
+];
+
+// Common accessories for industrial equipment
+const ACCESSORY_OPTIONS = [
+  "Power Cable", "Communication Cable (RS485/RS232)", "Ethernet Cable", "Programming Cable",
+  "Remote Keypad / Panel", "Mounting Bracket", "DIN Rail Clip", "Terminal Block / Connectors",
+  "Cooling Fan / Filter", "Braking Resistor", "EMC / RFI Filter", "Reactor / Choke",
+  "Manual / Documentation", "Software CD / USB", "Display Module", "Memory Card / USB",
+  "Fuse / Fuse Holder", "Encoder Feedback Cable", "I/O Module", "Extension Cable",
+  "Battery / Battery Pack", "Keypad Overlay", "Dust Cover", "Carrying Case",
+  "Adapter / Converter", "Gasket / Seal", "Touch Pen / Stylus", "Mounting Screws / Hardware",
+];
+
+const SEED_USERS = [
+  { id: "u1", name: "Administrator", email: "eiet", password: "admin@123", role: ROLES.ADMIN },
+];
+
+const SEED_CUSTOMERS = [];
+
+const SEED_JOBS = [];
+
+// ─── PERMISSION HELPERS ─────────────────────────────────────────────────────
+const can = (role, action) => {
+  const perms = {
+    admin: ["all"], manager: ["all"],
+    front_desk: ["create_job", "add_customer", "add_device_cat", "print_job", "print_label", "view_jobs", "view_customers", "view_dashboard"],
+    technician: ["view_assigned_jobs", "update_inspection", "add_estimate", "update_status"],
+  };
+  const p = perms[role] || [];
+  return p.includes("all") || p.includes(action);
+};
+
+// ─── STYLE ──────────────────────────────────────────────────────────────────
+const FONT = `'DM Sans', system-ui, sans-serif`;
+const MONO = `'JetBrains Mono', 'Fira Code', monospace`;
+const C = {
+  bg: "#0a0e17", surface: "#111827", surface2: "#1a2235", border: "#1e293b",
+  accent: "#22d3ee", accentDim: "rgba(34,211,238,0.12)", accentHover: "#06b6d4",
+  text: "#e2e8f0", textDim: "#94a3b8", textMuted: "#64748b",
+  danger: "#ef4444", success: "#10b981", warning: "#f59e0b",
+  white: "#ffffff", cardShadow: "0 1px 3px rgba(0,0,0,0.4)",
+};
+
+const Icon = ({ d, size = 18, color = C.textDim, style }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}><path d={d} /></svg>
+);
+const Icons = {
+  dashboard: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1",
+  jobs: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
+  customers: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
+  devices: "M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z",
+  print: "M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z",
+  settings: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z",
+  users: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M10 7a4 4 0 100-8 4 4 0 000 8M20 8v6M23 11h-6",
+  logout: "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9",
+  search: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
+  plus: "M12 5v14M5 12h14",
+  check: "M20 6L9 17l-5-5",
+  x: "M18 6L6 18M6 6l12 12",
+  menu: "M3 12h18M3 6h18M3 18h18",
+  backup: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12",
+  download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3",
+  accounts: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
+  truck: "M1 3h15v13H1zM16 8h4l3 3v5h-7V8zM5.5 21a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM18.5 21a2.5 2.5 0 100-5 2.5 2.5 0 000 5z",
+  inventory: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+};
+
+// ─── BASE COMPONENTS ────────────────────────────────────────────────────────
+const baseInput = { width: "100%", padding: "10px 14px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 14, fontFamily: FONT, outline: "none", boxSizing: "border-box", transition: "border-color 0.2s" };
+
+const Btn = ({ children, variant = "primary", onClick, style, disabled, small }) => {
+  const vars = {
+    primary: { bg: C.accent, color: C.bg, hoverBg: C.accentHover },
+    secondary: { bg: "transparent", color: C.textDim, hoverBg: C.surface2, border: `1px solid ${C.border}` },
+    danger: { bg: C.danger, color: C.white, hoverBg: "#dc2626" },
+    success: { bg: C.success, color: C.white, hoverBg: "#059669" },
+    ghost: { bg: "transparent", color: C.textDim, hoverBg: C.surface2 },
+    warning: { bg: C.warning, color: C.bg, hoverBg: "#d97706" },
+  };
+  const v = vars[variant];
+  const [hov, setHov] = useState(false);
+  return (
+    <button onClick={onClick} disabled={disabled} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ padding: small ? "6px 12px" : "10px 20px", borderRadius: 8, background: disabled ? C.surface2 : hov ? v.hoverBg : v.bg, color: disabled ? C.textMuted : v.color, border: v.border || "none", fontFamily: FONT, fontSize: small ? 12 : 14, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: 8, transition: "all 0.2s", whiteSpace: "nowrap", ...style }}>{children}</button>
+  );
+};
+
+const Badge = ({ label, color }) => (<span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, fontFamily: FONT, background: color + "22", color, letterSpacing: 0.5, textTransform: "uppercase" }}>{label}</span>);
+
+const Card = ({ children, style, onClick }) => (<div onClick={onClick} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, boxShadow: C.cardShadow, cursor: onClick ? "pointer" : "default", transition: "border-color 0.2s", ...style }}>{children}</div>);
+
+const Modal = ({ title, onClose, children, wide }) => (
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20, backdropFilter: "blur(4px)" }} onClick={onClose}>
+    <div onClick={e => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, width: "100%", maxWidth: wide ? 860 : 520, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 48px rgba(0,0,0,0.4)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 24px", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, background: C.surface, zIndex: 2 }}>
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: C.text, fontFamily: FONT }}>{title}</h3>
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: C.textDim, padding: 4 }}><Icon d={Icons.x} size={20} /></button>
+      </div>
+      <div style={{ padding: 24 }}>{children}</div>
+    </div>
+  </div>
+);
+
+const Field = ({ label, children, required }) => (<div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.textDim, marginBottom: 6, fontFamily: FONT, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}{required && <span style={{ color: C.danger }}> *</span>}</label>{children}</div>);
+
+const Input = (props) => <input {...props} style={{ ...baseInput, ...props.style }} onFocus={e => e.target.style.borderColor = C.accent} onBlur={e => e.target.style.borderColor = C.border} />;
+const Select = ({ children, ...props }) => <select {...props} style={{ ...baseInput, ...props.style, appearance: "none", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}>{children}</select>;
+const TextArea = (props) => <textarea {...props} style={{ ...baseInput, minHeight: 80, resize: "vertical", ...props.style }} onFocus={e => e.target.style.borderColor = C.accent} onBlur={e => e.target.style.borderColor = C.border} />;
+
+const StatCard = ({ label, value, color, icon }) => (<Card style={{ flex: "1 1 180px", minWidth: 170 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}><div><div style={{ fontSize: 11, color: C.textDim, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, fontFamily: FONT }}>{label}</div><div style={{ fontSize: 30, fontWeight: 800, color: color || C.text, fontFamily: MONO }}>{value}</div></div><div style={{ width: 40, height: 40, borderRadius: 10, background: (color || C.accent) + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{icon}</div></div></Card>);
+
+const EmptyState = ({ icon, message }) => (<div style={{ textAlign: "center", padding: "60px 20px", color: C.textMuted }}><div style={{ fontSize: 48, marginBottom: 12, opacity: 0.4 }}>{icon}</div><div style={{ fontSize: 14, fontFamily: FONT }}>{message}</div></div>);
+
+const SearchBar = ({ value, onChange, placeholder }) => (<div style={{ position: "relative", flex: 1, maxWidth: 360 }}><Icon d={Icons.search} size={16} color={C.textMuted} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} /><Input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder || "Search..."} style={{ paddingLeft: 36 }} /></div>);
+
+// ─── QR / BARCODE ───────────────────────────────────────────────────────────
+function generateQRMatrix(text) {
+  const size = 21;
+  const matrix = Array.from({ length: size }, () => Array(size).fill(false));
+  const addFinder = (r, c) => { for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) { if (i === 0 || i === 6 || j === 0 || j === 6 || (i >= 2 && i <= 4 && j >= 2 && j <= 4)) if (r + i < size && c + j < size) matrix[r + i][c + j] = true; } };
+  addFinder(0, 0); addFinder(0, 14); addFinder(14, 0);
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  for (let i = 8; i < size; i++) for (let j = 8; j < size; j++) { if (i < 14 || j < 14) matrix[i][j] = ((hash >>> ((i * size + j) % 31)) & 1) === 1; }
+  for (let i = 8; i < 13; i++) { matrix[6][i] = i % 2 === 0; matrix[i][6] = i % 2 === 0; }
+  return matrix;
+}
+
+const QRCode = ({ text, size = 120 }) => {
+  const matrix = generateQRMatrix(text); const cellSize = size / 21;
+  return (<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><rect width={size} height={size} fill="white" />{matrix.map((row, i) => row.map((cell, j) => cell ? (<rect key={`${i}-${j}`} x={j * cellSize} y={i * cellSize} width={cellSize} height={cellSize} fill="black" />) : null))}</svg>);
+};
+
+const Barcode = ({ text, width = 200, height = 60 }) => {
+  let hash = 0; for (let i = 0; i < text.length; i++) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  const bars = []; const barWidth = width / 60;
+  for (let i = 0; i < 60; i++) { const isBlack = ((hash >>> (i % 31)) & 1) === 1 || i < 3 || i > 56 || (i > 28 && i < 32); if (isBlack) bars.push(<rect key={i} x={i * barWidth} y={0} width={barWidth * 0.8} height={height} fill="black" />); }
+  return (<svg width={width} height={height + 20} viewBox={`0 0 ${width} ${height + 20}`}><rect width={width} height={height + 20} fill="white" />{bars}<text x={width / 2} y={height + 14} textAnchor="middle" fontSize="10" fontFamily={MONO} fill="black">{text}</text></svg>);
+};
+
+// ─── PRINT HELPER (iframe-based, works in sandboxed environments) ────────
+const PRINT_STYLES = `* { box-sizing: border-box; margin:0; padding:0; } body { font-family: 'Segoe UI', Arial, sans-serif; padding: 24px; color: #111; font-size:13px; } table { width:100%; border-collapse:collapse; margin:10px 0; } th, td { border:1px solid #ccc; padding:8px 12px; text-align:left; font-size:13px; } th { background:#f5f5f5; font-weight:600; } h1 { font-size:20px; margin-bottom:4px; } h2 { font-size:15px; margin:16px 0 8px; color:#333; border-bottom:1px solid #ddd; padding-bottom:4px; } .header { display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #111; padding-bottom:12px; margin-bottom:16px; } .meta { font-size:12px; color:#666; } .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; } .acc-list { margin:4px 0; padding-left:18px; } .acc-list li { font-size:12px; margin:2px 0; } @media print { body { padding: 10px; } }`;
+
+// Global print preview state holder
+let _showPrintPreview = null;
+let _setPrintPreview = null;
+
+const printContent = (htmlContent, title) => {
+  // Method 1: Try iframe print
+  try {
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:800px;height:600px;border:none;";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><title>${title}</title><style>${PRINT_STYLES}</style></head><body>${htmlContent}</body></html>`);
+    doc.close();
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (e) {
+        // If iframe print blocked, show preview
+        if (_setPrintPreview) _setPrintPreview({ html: htmlContent, title });
+      }
+      setTimeout(() => { try { document.body.removeChild(iframe); } catch(e) {} }, 2000);
+    }, 400);
+  } catch (e) {
+    // Fallback: show print preview modal
+    if (_setPrintPreview) _setPrintPreview({ html: htmlContent, title });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  MAIN APP
+// ═══════════════════════════════════════════════════════════════════════════
+function CRMApp() {
+  // ─── PERSISTENT STORAGE HELPERS ───
+  const loadData = (key, fallback) => {
+    try { const d = localStorage.getItem("crm_" + key); return d ? JSON.parse(d) : fallback; }
+    catch { return fallback; }
+  };
+  const saveData = (key, data) => {
+    try { localStorage.setItem("crm_" + key, JSON.stringify(data)); } catch {}
+  };
+
+  const [user, setUser] = useState(null);
+  const [page, setPage] = useState("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [customers, setCustomers] = useState(() => loadData("customers", SEED_CUSTOMERS));
+  const [jobs, setJobs] = useState(() => loadData("jobs", SEED_JOBS));
+  const [deviceCategories, setDeviceCategories] = useState(() => loadData("deviceCategories", DEVICE_CATEGORIES));
+  const [users, setUsers] = useState(() => loadData("users", SEED_USERS));
+  const [printerSettings, setPrinterSettings] = useState(() => loadData("printerSettings", { jobSheet: { paperSize: "A4", copies: 1 }, label: { type: "qr", labelSize: "50x25", copies: 1 } }));
+  const [companyDetails, setCompanyDetails] = useState(() => loadData("companyDetails", { name: "", gstNo: "", address: "", phone: "", email: "", website: "", bankName: "", bankAccount: "", bankIfsc: "", logo: "" }));
+  const [theme, setTheme] = useState(() => loadData("theme", "cyan"));
+  const [invoices, setInvoices] = useState(() => loadData("invoices", []));
+  const [challans, setChallans] = useState(() => loadData("challans", []));
+  const [stores, setStores] = useState(() => loadData("stores", [
+    { id: "s1", name: "Main Store", location: "Ground Floor, Workshop" },
+    { id: "s2", name: "Spare Parts Store", location: "First Floor, Room 3" },
+    { id: "s3", name: "Field Service Store", location: "Vehicle Bay" },
+  ]));
+  const [inventory, setInventory] = useState(() => loadData("inventory", []));
+  const [showModal, setShowModal] = useState(null);
+  const [modalData, setModalData] = useState(null);
+  const [search, setSearch] = useState("");
+  const [toast, setToast] = useState(null);
+  const [printPreview, setPrintPreview] = useState(null);
+
+  // ─── AUTO-SAVE TO LOCALSTORAGE ───
+  useEffect(() => { saveData("customers", customers); }, [customers]);
+  useEffect(() => { saveData("jobs", jobs); }, [jobs]);
+  useEffect(() => { saveData("deviceCategories", deviceCategories); }, [deviceCategories]);
+  useEffect(() => { saveData("users", users); }, [users]);
+  useEffect(() => { saveData("printerSettings", printerSettings); }, [printerSettings]);
+  useEffect(() => { saveData("companyDetails", companyDetails); }, [companyDetails]);
+  useEffect(() => { saveData("theme", theme); }, [theme]);
+  useEffect(() => { saveData("invoices", invoices); }, [invoices]);
+  useEffect(() => { saveData("challans", challans); }, [challans]);
+  useEffect(() => { saveData("stores", stores); }, [stores]);
+  useEffect(() => { saveData("inventory", inventory); }, [inventory]);
+
+  // Register global print preview setter
+  useEffect(() => { _setPrintPreview = setPrintPreview; return () => { _setPrintPreview = null; }; }, []);
+
+  const showToast = (msg, type = "success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
+
+  const nextJobId = useMemo(() => {
+    const nums = jobs.map(j => parseInt(j.id.split("-").pop()));
+    return `JS-2026-${String(Math.max(...nums, 0) + 1).padStart(4, "0")}`;
+  }, [jobs]);
+
+  if (!user) return <LoginScreen users={users} onLogin={setUser} />;
+
+  const navItems = [
+    { id: "dashboard", label: "Dashboard", icon: Icons.dashboard, access: ["admin", "manager", "front_desk"] },
+    { id: "jobs", label: "Job Sheets", icon: Icons.jobs, access: ["admin", "manager", "front_desk", "technician"] },
+    { id: "customers", label: "Customers", icon: Icons.customers, access: ["admin", "manager", "front_desk"] },
+    { id: "devices", label: "Equipment", icon: Icons.devices, access: ["admin", "manager", "front_desk"] },
+    { id: "inventory", label: "Inventory", icon: Icons.inventory, access: ["admin", "manager", "front_desk"] },
+    { id: "print", label: "Print Center", icon: Icons.print, access: ["admin", "manager", "front_desk"] },
+    { id: "accounts", label: "Accounts", icon: Icons.accounts, access: ["admin", "manager"] },
+    { id: "backup", label: "Data Backup", icon: Icons.backup, access: ["admin"] },
+    { id: "users", label: "User Mgmt", icon: Icons.users, access: ["admin"] },
+    { id: "settings", label: "Settings", icon: Icons.settings, access: ["admin", "manager"] },
+  ].filter(n => n.access.includes(user.role));
+
+  const techJobs = user.role === ROLES.TECHNICIAN ? jobs.filter(j => j.assignedTo === user.id) : jobs;
+  const getCustomer = id => customers.find(c => c.id === id);
+  const getUser = id => users.find(u => u.id === id);
+  const getDevice = id => deviceCategories.find(d => d.id === id);
+  const technicians = users.filter(u => u.role === ROLES.TECHNICIAN);
+
+  const handleCreateJob = (data) => {
+    const newJob = { ...data, id: nextJobId, status: "Created", createdAt: new Date().toISOString(), createdBy: user.id, inspectionReport: "", estimate: 0, notes: "" };
+    setJobs(prev => [...prev, newJob]);
+    setShowModal(null);
+    showToast(`Job ${nextJobId} created successfully`);
+  };
+
+  const handleUpdateJob = (jobId, updates) => {
+    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...updates } : j));
+    showToast(`Job ${jobId} updated`);
+  };
+
+  const handleAddCustomer = (data) => {
+    setCustomers(prev => [...prev, { ...data, id: "c" + (prev.length + 1) }]);
+    setShowModal(null);
+    showToast("Customer added");
+  };
+
+  const handleAddDeviceCategory = (data) => {
+    setDeviceCategories(prev => [...prev, { ...data, id: "dc" + (prev.length + 1) }]);
+    setShowModal(null);
+    showToast("Equipment category added");
+  };
+
+  const handlePrintJobSheet = (job) => {
+    const cust = getCustomer(job.customerId); const dev = getDevice(job.deviceCategory); const tech = getUser(job.assignedTo);
+    const allAcc = [...(job.accessories || []), ...(job.customAccessories ? [job.customAccessories] : [])];
+    const html = `<div class="header"><div><h1>SERVICE JOB SHEET</h1><div class="meta">Industrial Electrical & Automation Service Center</div></div><div style="text-align:right"><div style="font-size:20px;font-weight:700;font-family:monospace">${job.id}</div><div class="meta">${new Date(job.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div><div class="badge" style="background:${job.serviceType === "On-Site" ? "#f59e0b22" : "#22d3ee22"};color:${job.serviceType === "On-Site" ? "#d97706" : "#0891b2"};margin-top:4px">${job.serviceType || "Carry-In"}</div></div></div>
+      <h2>Customer Details</h2>
+      <table><tr><th width="15%">Company</th><td width="35%">${cust?.name || "—"}</td><th width="15%">Contact</th><td width="35%">${cust?.contactPerson || "—"}</td></tr><tr><th>Phone</th><td>${cust?.phone || "—"}</td><th>GST No.</th><td style="font-family:monospace;font-weight:600">${cust?.gstNo || "N/A"}</td></tr><tr><th>Email</th><td>${cust?.email || "—"}</td><th>Address</th><td>${cust?.address || "—"}</td></tr></table>
+      <h2>Equipment Details</h2>
+      <table><tr><th>Category</th><td>${dev?.icon} ${dev?.name || "—"}</td><th>Make</th><td>${job.deviceBrand}</td></tr><tr><th>Model</th><td>${job.deviceModel}</td><th>Serial No.</th><td style="font-family:monospace">${job.serialNumber}</td></tr></table>
+      ${allAcc.length > 0 ? `<h2>Accessories Received</h2><ul class="acc-list">${allAcc.map(a => `<li>${a}</li>`).join("")}</ul>` : ""}
+      <h2>Service Details</h2>
+      <table><tr><th>Problem</th><td colspan="3">${job.problemDescription}</td></tr><tr><th>Assigned To</th><td>${tech?.name || "Unassigned"}</td><th>Status</th><td><span class="badge" style="background:${STATUS_COLORS[job.status]}22;color:${STATUS_COLORS[job.status]}">${job.status}</span></td></tr>${job.inspectionReport ? `<tr><th>Inspection</th><td colspan="3">${job.inspectionReport}</td></tr>` : ""}${job.estimate ? `<tr><th>Estimate</th><td colspan="3">₹${job.estimate.toLocaleString("en-IN")}</td></tr>` : ""}${job.notes ? `<tr><th>Notes</th><td colspan="3">${job.notes}</td></tr>` : ""}</table>
+      <div style="margin-top:40px;display:flex;justify-content:space-between"><div><div style="border-top:1px solid #999;width:200px;margin-top:40px;padding-top:4px;font-size:12px">Customer Signature & Stamp</div></div><div><div style="border-top:1px solid #999;width:200px;margin-top:40px;padding-top:4px;font-size:12px">Authorized Signature</div></div></div>`;
+    printContent(html, `Job Sheet - ${job.id}`);
+  };
+
+  const renderPage = () => {
+    switch (page) {
+      case "dashboard": return <DashboardPage jobs={techJobs} customers={customers} technicians={technicians} getCustomer={getCustomer} getUser={getUser} getDevice={getDevice} user={user} setPage={setPage} />;
+      case "jobs": return <JobsPage jobs={techJobs} user={user} search={search} setSearch={setSearch} customers={customers} deviceCategories={deviceCategories} technicians={technicians} getCustomer={getCustomer} getUser={getUser} getDevice={getDevice} onCreateJob={() => setShowModal("createJob")} onViewJob={j => { setModalData(j); setShowModal("viewJob"); }} onUpdateJob={handleUpdateJob} onPrintJob={handlePrintJobSheet} onPrintLabel={j => { setModalData(j); setShowModal("printLabel"); }} />;
+      case "customers": return <CustomersPage customers={customers} jobs={jobs} search={search} setSearch={setSearch} onAdd={() => setShowModal("addCustomer")} />;
+      case "devices": return <DevicesPage categories={deviceCategories} jobs={jobs} onAdd={() => setShowModal("addDevice")} />;
+      case "inventory": return <InventoryPage inventory={inventory} setInventory={setInventory} stores={stores} setStores={setStores} deviceCategories={deviceCategories} showToast={showToast} />;
+      case "print": return <PrintCenterPage printerSettings={printerSettings} onUpdate={setPrinterSettings} jobs={techJobs} onPrintJob={handlePrintJobSheet} onPrintLabel={j => { setModalData(j); setShowModal("printLabel"); }} getCustomer={getCustomer} getDevice={getDevice} />;
+      case "accounts": return <AccountsPage invoices={invoices} setInvoices={setInvoices} challans={challans} setChallans={setChallans} jobs={jobs} customers={customers} getCustomer={getCustomer} getDevice={getDevice} companyDetails={companyDetails} showToast={showToast} />;
+      case "backup": return <BackupPage jobs={jobs} customers={customers} users={users} deviceCategories={deviceCategories} printerSettings={printerSettings} showToast={showToast} setJobs={setJobs} setCustomers={setCustomers} setUsers={setUsers} setDeviceCategories={setDeviceCategories} />;
+      case "users": return <UsersPage users={users} setUsers={setUsers} currentUser={user} showToast={showToast} />;
+      case "settings": return <SettingsPage printerSettings={printerSettings} onUpdate={setPrinterSettings} companyDetails={companyDetails} setCompanyDetails={setCompanyDetails} theme={theme} setTheme={setTheme} showToast={showToast} />;
+      default: return null;
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", height: "100vh", fontFamily: FONT, background: C.bg, color: C.text, overflow: "hidden" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 3px; }
+        * { box-sizing: border-box; } input::placeholder, textarea::placeholder { color: ${C.textMuted}; } select option { background: ${C.surface}; color: ${C.text}; }
+      `}</style>
+
+      {/* SIDEBAR */}
+      <aside style={{ width: sidebarOpen ? 250 : 64, background: C.surface, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", transition: "width 0.25s ease", overflow: "hidden", flexShrink: 0 }}>
+        <div style={{ padding: sidebarOpen ? "20px 20px 16px" : "20px 12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ background: "none", border: "none", cursor: "pointer", color: C.textDim, padding: 4 }}><Icon d={Icons.menu} size={20} /></button>
+          {sidebarOpen && <div><div style={{ fontSize: 15, fontWeight: 800, color: C.accent, letterSpacing: 1.5 }}>SERVICE CRM</div><div style={{ fontSize: 10, color: C.textMuted, letterSpacing: 0.5 }}>Industrial & Automation</div></div>}
+        </div>
+        <nav style={{ flex: 1, padding: "12px 8px", overflowY: "auto" }}>
+          {navItems.map(n => (
+            <button key={n.id} onClick={() => setPage(n.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", background: page === n.id ? C.accentDim : "transparent", color: page === n.id ? C.accent : C.textDim, cursor: "pointer", fontFamily: FONT, fontSize: 13, fontWeight: page === n.id ? 600 : 500, transition: "all 0.15s", marginBottom: 2, textAlign: "left" }}>
+              <Icon d={n.icon} size={18} color={page === n.id ? C.accent : C.textDim} />{sidebarOpen && n.label}
+            </button>
+          ))}
+        </nav>
+        <div style={{ padding: "12px 8px", borderTop: `1px solid ${C.border}` }}>
+          {sidebarOpen && <div style={{ padding: "8px 14px", marginBottom: 4 }}><div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{user.name}</div><div style={{ fontSize: 11, color: C.textMuted }}>{ROLE_LABELS[user.role]}</div></div>}
+          <button onClick={() => setShowModal("myPassword")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", background: "transparent", color: C.textDim, cursor: "pointer", fontFamily: FONT, fontSize: 13, fontWeight: 500, textAlign: "left", transition: "background 0.15s" }} onMouseEnter={e => e.currentTarget.style.background = C.surface2} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.textDim} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            {sidebarOpen && "Change Password"}
+          </button>
+          <button onClick={() => setUser(null)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", background: "transparent", color: C.danger, cursor: "pointer", fontFamily: FONT, fontSize: 13, fontWeight: 500, textAlign: "left" }}>
+            <Icon d={Icons.logout} size={18} color={C.danger} />{sidebarOpen && "Logout"}
+          </button>
+        </div>
+      </aside>
+
+      <main style={{ flex: 1, overflow: "auto", padding: 32 }}>{renderPage()}</main>
+
+      {showModal === "createJob" && <CreateJobModal customers={customers} deviceCategories={deviceCategories} technicians={technicians} onSubmit={handleCreateJob} onClose={() => setShowModal(null)} nextId={nextJobId} />}
+      {showModal === "viewJob" && modalData && <ViewJobModal job={modalData} user={user} getCustomer={getCustomer} getUser={getUser} getDevice={getDevice} onClose={() => { setShowModal(null); setModalData(null); }} onUpdate={(u) => { handleUpdateJob(modalData.id, u); setModalData({ ...modalData, ...u }); }} onPrint={() => handlePrintJobSheet(modalData)} technicians={technicians} />}
+      {showModal === "addCustomer" && <AddCustomerModal onSubmit={handleAddCustomer} onClose={() => setShowModal(null)} />}
+      {showModal === "addDevice" && <AddDeviceCategoryModal onSubmit={handleAddDeviceCategory} onClose={() => setShowModal(null)} />}
+      {showModal === "printLabel" && modalData && <PrintLabelModal job={modalData} settings={printerSettings.label} onClose={() => { setShowModal(null); setModalData(null); }} />}
+      {showModal === "myPassword" && <MyPasswordModal user={user} users={users} setUsers={setUsers} onClose={() => setShowModal(null)} showToast={showToast} />}
+
+      {/* PRINT PREVIEW MODAL */}
+      {printPreview && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 20, backdropFilter: "blur(4px)" }} onClick={() => setPrintPreview(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 860, maxHeight: "92vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 48px rgba(0,0,0,0.5)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", borderBottom: "1px solid #e5e7eb", background: "#f9fafb", borderRadius: "16px 16px 0 0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 18 }}>🖨️</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#111", fontFamily: FONT }}>{printPreview.title}</span>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => {
+                  const printWindow = document.getElementById("print-preview-frame");
+                  if (printWindow) { try { printWindow.contentWindow.focus(); printWindow.contentWindow.print(); } catch(e) {} }
+                }} style={{ padding: "8px 20px", borderRadius: 8, background: "#111", color: "#fff", border: "none", fontFamily: FONT, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                  🖨️ Print
+                </button>
+                <button onClick={() => setPrintPreview(null)} style={{ padding: "8px 12px", borderRadius: 8, background: "#f3f4f6", color: "#666", border: "1px solid #e5e7eb", fontFamily: FONT, fontSize: 13, cursor: "pointer" }}>✕ Close</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflow: "auto", padding: 0 }}>
+              <iframe
+                id="print-preview-frame"
+                srcDoc={`<!DOCTYPE html><html><head><style>${PRINT_STYLES}</style></head><body>${printPreview.html}</body></html>`}
+                style={{ width: "100%", height: "70vh", border: "none", background: "#fff" }}
+                title="Print Preview"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div style={{ position: "fixed", bottom: 24, right: 24, padding: "14px 24px", borderRadius: 10, background: toast.type === "success" ? C.success : toast.type === "warning" ? C.warning : C.danger, color: toast.type === "warning" ? C.bg : C.white, fontFamily: FONT, fontSize: 14, fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", zIndex: 2000, animation: "slideUp 0.3s ease" }}>{toast.msg}</div>
+      )}
+      <style>{`@keyframes slideUp { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }`}</style>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  LOGIN
+// ═══════════════════════════════════════════════════════════════════════════
+function LoginScreen({ users, onLogin }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const handleLogin = () => {
+    setLoading(true); setError("");
+    setTimeout(() => {
+      const u = users.find(u => u.email === email && u.password === password);
+      if (u) onLogin(u); else { setError("Invalid email or password"); setLoading(false); }
+    }, 400);
+  };
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: FONT }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');`}</style>
+      <div style={{ width: 420, padding: 40 }}>
+        <div style={{ textAlign: "center", marginBottom: 40 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: C.accentDim, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 28 }}>⚡</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: C.accent, letterSpacing: 2, marginBottom: 4 }}>SERVICE CRM</div>
+          <div style={{ fontSize: 13, color: C.textMuted }}>Industrial Electrical & Automation</div>
+        </div>
+        <Card>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 4 }}>Welcome back</div>
+          <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 20 }}>Sign in to your account to continue</div>
+          <Field label="Username"><Input type="text" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="Enter your username" autoComplete="username" /></Field>
+          <Field label="Password"><Input type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} placeholder="Enter your password" onKeyDown={e => e.key === "Enter" && handleLogin()} autoComplete="current-password" /></Field>
+          {error && <div style={{ color: C.danger, fontSize: 13, marginBottom: 12, padding: "8px 12px", background: C.danger + "12", borderRadius: 6 }}>⚠️ {error}</div>}
+          <Btn onClick={handleLogin} disabled={loading || !email || !password} style={{ width: "100%", justifyContent: "center", marginTop: 8 }}>{loading ? "Signing in..." : "Sign In"}</Btn>
+          <div style={{ textAlign: "center", marginTop: 20, fontSize: 11, color: C.textMuted }}>Contact your administrator if you need access</div>
+        </Card>
+        <div style={{ textAlign: "center", marginTop: 20, fontSize: 11, color: C.textMuted + "88" }}>Service CRM v1.0 · Industrial & Automation</div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════
+function DashboardPage({ jobs, customers, technicians, getCustomer, getUser, getDevice, user, setPage }) {
+  const statusCounts = STATUS_FLOW.reduce((a, s) => ({ ...a, [s]: jobs.filter(j => j.status === s).length }), {});
+  const recentJobs = [...jobs].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+  const onSiteCount = jobs.filter(j => j.serviceType === "On-Site" && !["Completed", "Delivered"].includes(j.status)).length;
+
+  return (
+    <div>
+      <div style={{ marginBottom: 28 }}><h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Dashboard</h1><p style={{ fontSize: 14, color: C.textDim, margin: "4px 0 0" }}>Welcome back, {user.name}</p></div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 28 }}>
+        <StatCard label="Total Jobs" value={jobs.length} color={C.accent} icon="📋" />
+        <StatCard label="Active" value={jobs.filter(j => !["Completed", "Delivered"].includes(j.status)).length} color={C.warning} icon="⚡" />
+        <StatCard label="On-Site Active" value={onSiteCount} color="#f97316" icon="🏭" />
+        <StatCard label="Completed" value={statusCounts.Completed + statusCounts.Delivered} color={C.success} icon="✅" />
+        <StatCard label="Customers" value={customers.length} color="#8b5cf6" icon="🏢" />
+      </div>
+      <Card style={{ marginBottom: 24 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: C.text }}>Job Pipeline</h3>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {STATUS_FLOW.map(s => (
+            <div key={s} style={{ flex: 1, minWidth: 85, padding: 12, borderRadius: 8, textAlign: "center", background: STATUS_COLORS[s] + "12", border: `1px solid ${STATUS_COLORS[s]}33` }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: STATUS_COLORS[s], fontFamily: MONO }}>{statusCounts[s]}</div>
+              <div style={{ fontSize: 10, color: C.textDim, fontWeight: 600, marginTop: 4 }}>{s}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: C.text }}>Recent Jobs</h3>
+          <Btn variant="ghost" small onClick={() => setPage("jobs")}>View All →</Btn>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>{["Job ID", "Customer", "Equipment", "Type", "Status", "Date"].map(h => (<th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 11, fontWeight: 700, color: C.textMuted, borderBottom: `1px solid ${C.border}`, textTransform: "uppercase", letterSpacing: 0.8 }}>{h}</th>))}</tr></thead>
+          <tbody>
+            {recentJobs.map(j => { const cust = getCustomer(j.customerId); const dev = getDevice(j.deviceCategory); return (
+              <tr key={j.id}><td style={{ padding: "10px 12px", fontFamily: MONO, fontSize: 13, fontWeight: 600, color: C.accent }}>{j.id}</td><td style={{ padding: "10px 12px", fontSize: 13 }}>{cust?.name}</td><td style={{ padding: "10px 12px", fontSize: 13 }}>{dev?.icon} {dev?.name}</td><td style={{ padding: "10px 12px" }}><Badge label={j.serviceType || "Carry-In"} color={j.serviceType === "On-Site" ? C.warning : C.accent} /></td><td style={{ padding: "10px 12px" }}><Badge label={j.status} color={STATUS_COLORS[j.status]} /></td><td style={{ padding: "10px 12px", fontSize: 12, color: C.textMuted }}>{new Date(j.createdAt).toLocaleDateString("en-IN")}</td></tr>
+            ); })}
+          </tbody>
+        </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  JOBS PAGE
+// ═══════════════════════════════════════════════════════════════════════════
+function JobsPage({ jobs, user, search, setSearch, customers, deviceCategories, technicians, getCustomer, getUser, getDevice, onCreateJob, onViewJob, onUpdateJob, onPrintJob, onPrintLabel }) {
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [typeFilter, setTypeFilter] = useState("All");
+  const filtered = jobs.filter(j => {
+    const cust = getCustomer(j.customerId);
+    const matchSearch = !search || j.id.toLowerCase().includes(search.toLowerCase()) || cust?.name?.toLowerCase().includes(search.toLowerCase()) || j.deviceBrand?.toLowerCase().includes(search.toLowerCase());
+    return (statusFilter === "All" || j.status === statusFilter) && (typeFilter === "All" || (j.serviceType || "Carry-In") === typeFilter) && matchSearch;
+  }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Job Sheets</h1>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <SearchBar value={search} onChange={setSearch} placeholder="Search jobs..." />
+          <Select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ width: 130 }}><option value="All">All Types</option>{SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}</Select>
+          <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ width: 150 }}><option value="All">All Status</option>{STATUS_FLOW.map(s => <option key={s} value={s}>{s}</option>)}</Select>
+          {can(user.role, "create_job") && <Btn onClick={onCreateJob}><Icon d={Icons.plus} size={16} color={C.bg} /> New Job</Btn>}
+        </div>
+      </div>
+      {filtered.length === 0 ? <EmptyState icon="📋" message="No jobs found" /> : (
+        <div style={{ display: "grid", gap: 12 }}>
+          {filtered.map(j => {
+            const cust = getCustomer(j.customerId); const dev = getDevice(j.deviceCategory); const tech = getUser(j.assignedTo);
+            const accCount = (j.accessories?.length || 0) + (j.customAccessories ? 1 : 0);
+            return (
+              <Card key={j.id} onClick={() => onViewJob(j)} style={{ cursor: "pointer" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: C.accent }}>{j.id}</span>
+                      <Badge label={j.status} color={STATUS_COLORS[j.status]} />
+                      <Badge label={j.serviceType || "Carry-In"} color={j.serviceType === "On-Site" ? C.warning : "#06b6d4"} />
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{cust?.name || "—"}</div>
+                    <div style={{ fontSize: 13, color: C.textDim }}>{dev?.icon} {dev?.name} — {j.deviceBrand} {j.deviceModel}</div>
+                    {accCount > 0 && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>📎 {accCount} accessor{accCount > 1 ? "ies" : "y"} received</div>}
+                  </div>
+                  <div style={{ textAlign: "right", minWidth: 140 }}>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>{new Date(j.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div>
+                    {tech && <div style={{ fontSize: 12, color: C.textDim }}>🔧 {tech.name}</div>}
+                    {j.estimate > 0 && <div style={{ fontSize: 13, fontWeight: 700, color: C.success, marginTop: 4, fontFamily: MONO }}>₹{j.estimate.toLocaleString("en-IN")}</div>}
+                  </div>
+                </div>
+                {j.problemDescription && <div style={{ marginTop: 10, fontSize: 13, color: C.textMuted, lineHeight: 1.4, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>{j.problemDescription}</div>}
+                <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }} onClick={e => e.stopPropagation()}>
+                  <Btn variant="ghost" small onClick={() => onPrintJob(j)}>🖨️ Print</Btn>
+                  <Btn variant="ghost" small onClick={() => onPrintLabel(j)}>🏷️ Label</Btn>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CUSTOMERS PAGE (with GST)
+// ═══════════════════════════════════════════════════════════════════════════
+function CustomersPage({ customers, jobs, search, setSearch, onAdd }) {
+  const filtered = customers.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search) || (c.gstNo || "").toLowerCase().includes(search.toLowerCase()) || (c.contactPerson || "").toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Customers</h1>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}><SearchBar value={search} onChange={setSearch} placeholder="Search name, GST, contact..." /><Btn onClick={onAdd}><Icon d={Icons.plus} size={16} color={C.bg} /> Add Customer</Btn></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+        {filtered.map(c => {
+          const custJobs = jobs.filter(j => j.customerId === c.id);
+          return (
+            <Card key={c.id}>
+              <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 14 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 22, background: C.accentDim, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: C.accent }}>{c.name[0]}</div>
+                <div style={{ flex: 1 }}><div style={{ fontWeight: 700, fontSize: 15 }}>{c.name}</div>{c.contactPerson && <div style={{ fontSize: 12, color: C.textDim }}>👤 {c.contactPerson}</div>}</div>
+              </div>
+              <div style={{ fontSize: 13, color: C.textDim, marginBottom: 3 }}>📞 {c.phone} · {c.email}</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 3 }}>{c.address}</div>
+              {c.gstNo && (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", background: C.surface2, borderRadius: 6, marginBottom: 10, marginTop: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, letterSpacing: 0.5 }}>GST</span>
+                  <span style={{ fontSize: 12, fontFamily: MONO, fontWeight: 600, color: C.text }}>{c.gstNo}</span>
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}><Badge label={`${custJobs.length} Jobs`} color={C.accent} /><Badge label={`${custJobs.filter(j => j.status === "Completed").length} Done`} color={C.success} /></div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  EQUIPMENT CATEGORIES PAGE
+// ═══════════════════════════════════════════════════════════════════════════
+function DevicesPage({ categories, jobs, onAdd }) {
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}><h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Equipment Categories</h1><Btn onClick={onAdd}><Icon d={Icons.plus} size={16} color={C.bg} /> Add Category</Btn></div>
+      <p style={{ fontSize: 13, color: C.textMuted, marginBottom: 24 }}>Industrial Electrical & Automation Products</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 16 }}>
+        {categories.map(d => { const count = jobs.filter(j => j.deviceCategory === d.id).length; return (
+          <Card key={d.id} style={{ textAlign: "center", padding: 20 }}><div style={{ fontSize: 36, marginBottom: 8 }}>{d.icon}</div><div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{d.name}</div><div style={{ fontSize: 12, color: C.textMuted }}>{count} job{count !== 1 ? "s" : ""}</div></Card>
+        ); })}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  INVENTORY MANAGEMENT PAGE
+// ═══════════════════════════════════════════════════════════════════════════
+function InventoryPage({ inventory, setInventory, stores, setStores, deviceCategories, showToast }) {
+  const [tab, setTab] = useState("items");
+  const [search, setSearch] = useState("");
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [showAddStore, setShowAddStore] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [storeFilter, setStoreFilter] = useState("All");
+  const [catFilter, setCatFilter] = useState("All");
+  const [stockFilter, setStockFilter] = useState("All");
+
+  // Item form
+  const emptyItem = { name: "", partNo: "", category: "", storeId: "", drawerNo: "", qty: 0, minQty: 1, unit: "pcs", brand: "", description: "", purchasePrice: 0, sellingPrice: 0 };
+  const [itemForm, setItemForm] = useState(emptyItem);
+
+  // Store form
+  const [storeForm, setStoreForm] = useState({ name: "", location: "" });
+
+  const getStore = id => stores.find(s => s.id === id);
+
+  const filtered = inventory.filter(item => {
+    const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase()) || (item.partNo || "").toLowerCase().includes(search.toLowerCase()) || (item.brand || "").toLowerCase().includes(search.toLowerCase()) || (item.drawerNo || "").toLowerCase().includes(search.toLowerCase());
+    const matchStore = storeFilter === "All" || item.storeId === storeFilter;
+    const matchCat = catFilter === "All" || item.category === catFilter;
+    const matchStock = stockFilter === "All" || (stockFilter === "Low" && item.qty <= item.minQty && item.qty > 0) || (stockFilter === "Out" && item.qty === 0) || (stockFilter === "In" && item.qty > 0);
+    return matchSearch && matchStore && matchCat && matchStock;
+  });
+
+  const totalItems = inventory.length;
+  const totalValue = inventory.reduce((s, i) => s + i.qty * i.purchasePrice, 0);
+  const lowStock = inventory.filter(i => i.qty <= i.minQty && i.qty > 0).length;
+  const outOfStock = inventory.filter(i => i.qty === 0).length;
+
+  const handleAddItem = () => {
+    if (!itemForm.name || !itemForm.storeId) return;
+    if (editItem) {
+      setInventory(prev => prev.map(i => i.id === editItem.id ? { ...i, ...itemForm } : i));
+      showToast(`${itemForm.name} updated`);
+      setEditItem(null);
+    } else {
+      setInventory(prev => [...prev, { ...itemForm, id: "inv" + Date.now(), createdAt: new Date().toISOString() }]);
+      showToast(`${itemForm.name} added to inventory`);
+    }
+    setItemForm(emptyItem);
+    setShowAddItem(false);
+  };
+
+  const handleDeleteItem = (item) => {
+    setInventory(prev => prev.filter(i => i.id !== item.id));
+    showToast(`${item.name} removed`, "warning");
+  };
+
+  const handleAddStore = () => {
+    if (!storeForm.name) return;
+    setStores(prev => [...prev, { ...storeForm, id: "s" + Date.now() }]);
+    setStoreForm({ name: "", location: "" });
+    setShowAddStore(false);
+    showToast(`Store "${storeForm.name}" added`);
+  };
+
+  const handleDeleteStore = (store) => {
+    const itemsInStore = inventory.filter(i => i.storeId === store.id).length;
+    if (itemsInStore > 0) { showToast(`Cannot delete — ${itemsInStore} items in this store`, "error"); return; }
+    setStores(prev => prev.filter(s => s.id !== store.id));
+    showToast(`Store "${store.name}" removed`, "warning");
+  };
+
+  const handleQtyChange = (itemId, delta) => {
+    setInventory(prev => prev.map(i => i.id === itemId ? { ...i, qty: Math.max(0, i.qty + delta) } : i));
+  };
+
+  const tabs = [
+    { id: "items", label: "📦 Inventory Items" },
+    { id: "stores", label: "🏪 Stores & Locations" },
+  ];
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <div><h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Inventory Management</h1><p style={{ fontSize: 13, color: C.textMuted, margin: "4px 0 0" }}>Parts, components & spares</p></div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn onClick={() => { setItemForm(emptyItem); setEditItem(null); setShowAddItem(true); }}><Icon d={Icons.plus} size={16} color={C.bg} /> Add Item</Btn>
+          <Btn variant="secondary" onClick={() => { setStoreForm({ name: "", location: "" }); setShowAddStore(true); }}><Icon d={Icons.plus} size={16} /> Add Store</Btn>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 28 }}>
+        <StatCard label="Total Items" value={totalItems} color={C.accent} icon="📦" />
+        <StatCard label="Stock Value" value={`₹${totalValue > 999 ? (totalValue/1000).toFixed(1) + "k" : totalValue}`} color={C.success} icon="💰" />
+        <StatCard label="Low Stock" value={lowStock} color={C.warning} icon="⚠️" />
+        <StatCard label="Out of Stock" value={outOfStock} color={C.danger} icon="🚫" />
+        <StatCard label="Stores" value={stores.length} color="#8b5cf6" icon="🏪" />
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 20, borderRadius: 10, overflow: "hidden", border: `1px solid ${C.border}`, maxWidth: 440 }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "10px 16px", border: "none", cursor: "pointer", fontFamily: FONT, fontSize: 13, fontWeight: 600, background: tab === t.id ? C.accent : C.surface2, color: tab === t.id ? C.bg : C.textMuted, transition: "all 0.2s" }}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* ITEMS TAB */}
+      {tab === "items" && (
+        <div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+            <SearchBar value={search} onChange={setSearch} placeholder="Search name, part no, drawer..." />
+            <Select value={storeFilter} onChange={e => setStoreFilter(e.target.value)} style={{ width: 160 }}>
+              <option value="All">All Stores</option>
+              {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+            <Select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={{ width: 160 }}>
+              <option value="All">All Categories</option>
+              {deviceCategories.map(d => <option key={d.id} value={d.id}>{d.icon} {d.name}</option>)}
+            </Select>
+            <Select value={stockFilter} onChange={e => setStockFilter(e.target.value)} style={{ width: 130 }}>
+              <option value="All">All Stock</option>
+              <option value="In">In Stock</option>
+              <option value="Low">Low Stock</option>
+              <option value="Out">Out of Stock</option>
+            </Select>
+          </div>
+
+          {filtered.length === 0 ? <EmptyState icon="📦" message={inventory.length === 0 ? "No inventory items yet — click 'Add Item' to start" : "No items match your filters"} /> : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {filtered.map(item => {
+                const store = getStore(item.storeId);
+                const cat = deviceCategories.find(d => d.id === item.category);
+                const isLow = item.qty <= item.minQty && item.qty > 0;
+                const isOut = item.qty === 0;
+                return (
+                  <Card key={item.id} style={{ borderLeft: `3px solid ${isOut ? C.danger : isLow ? C.warning : C.success}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 220 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 700, fontSize: 15 }}>{item.name}</span>
+                          {isOut && <Badge label="Out of Stock" color={C.danger} />}
+                          {isLow && !isOut && <Badge label="Low Stock" color={C.warning} />}
+                          {!isLow && !isOut && <Badge label="In Stock" color={C.success} />}
+                        </div>
+                        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: C.textDim, marginBottom: 4 }}>
+                          {item.partNo && <span style={{ fontFamily: MONO }}>P/N: {item.partNo}</span>}
+                          {item.brand && <span>Brand: {item.brand}</span>}
+                          {cat && <span>{cat.icon} {cat.name}</span>}
+                        </div>
+                        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: C.textMuted }}>
+                          {store && <span>🏪 {store.name}</span>}
+                          {item.drawerNo && <span style={{ padding: "2px 8px", background: C.surface2, borderRadius: 4, fontFamily: MONO, fontWeight: 600, color: C.accent }}>🗄️ Drawer: {item.drawerNo}</span>}
+                        </div>
+                        {item.description && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>{item.description}</div>}
+                      </div>
+
+                      {/* Qty & Price Section */}
+                      <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Qty</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <button onClick={() => handleQtyChange(item.id, -1)} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface2, color: C.text, cursor: "pointer", fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+                            <span style={{ fontFamily: MONO, fontSize: 18, fontWeight: 800, color: isOut ? C.danger : isLow ? C.warning : C.text, minWidth: 36, textAlign: "center" }}>{item.qty}</span>
+                            <button onClick={() => handleQtyChange(item.id, 1)} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface2, color: C.text, cursor: "pointer", fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+                          </div>
+                          <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>{item.unit} (min: {item.minQty})</div>
+                        </div>
+                        {item.sellingPrice > 0 && (
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Price</div>
+                            <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.success }}>₹{item.sellingPrice.toLocaleString("en-IN")}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10, justifyContent: "flex-end" }}>
+                      <Btn variant="ghost" small onClick={() => { setItemForm(item); setEditItem(item); setShowAddItem(true); }}>✏️ Edit</Btn>
+                      <Btn variant="ghost" small onClick={() => handleDeleteItem(item)} style={{ color: C.danger }}>🗑️ Remove</Btn>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* STORES TAB */}
+      {tab === "stores" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+          {stores.map(store => {
+            const itemCount = inventory.filter(i => i.storeId === store.id).length;
+            const storeValue = inventory.filter(i => i.storeId === store.id).reduce((s, i) => s + i.qty * i.purchasePrice, 0);
+            const drawers = [...new Set(inventory.filter(i => i.storeId === store.id && i.drawerNo).map(i => i.drawerNo))].sort();
+            return (
+              <Card key={store.id} style={{ borderLeft: `3px solid #8b5cf6` }}>
+                <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 14 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 12, background: "#8b5cf622", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>🏪</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>{store.name}</div>
+                    <div style={{ fontSize: 12, color: C.textMuted }}>{store.location || "No location set"}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                  <Badge label={`${itemCount} items`} color={C.accent} />
+                  {storeValue > 0 && <Badge label={`₹${storeValue.toLocaleString("en-IN")}`} color={C.success} />}
+                </div>
+                {drawers.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, textTransform: "uppercase", marginBottom: 6 }}>Drawers in use</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {drawers.map(d => (
+                        <span key={d} style={{ padding: "3px 8px", background: C.accentDim, borderRadius: 4, fontSize: 11, fontFamily: MONO, fontWeight: 600, color: C.accent }}>{d}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                  <Btn variant="ghost" small onClick={() => { setStoreFilter(store.id); setTab("items"); }}>View Items →</Btn>
+                  <Btn variant="ghost" small onClick={() => handleDeleteStore(store)} style={{ color: C.danger }}>🗑️ Delete</Btn>
+                </div>
+              </Card>
+            );
+          })}
+          {stores.length === 0 && <EmptyState icon="🏪" message="No stores yet — click 'Add Store' to create one" />}
+        </div>
+      )}
+
+      {/* ADD / EDIT ITEM MODAL */}
+      {showAddItem && (
+        <Modal title={editItem ? `Edit — ${editItem.name}` : "Add Inventory Item"} onClose={() => { setShowAddItem(false); setEditItem(null); setItemForm(emptyItem); }} wide>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+            <Field label="Item Name" required><Input value={itemForm.name} onChange={e => setItemForm({ ...itemForm, name: e.target.value })} placeholder="e.g. IGBT Module, Capacitor 470uF" /></Field>
+            <Field label="Part Number"><Input value={itemForm.partNo} onChange={e => setItemForm({ ...itemForm, partNo: e.target.value.toUpperCase() })} placeholder="e.g. ACS580-IGBT-Q2" style={{ fontFamily: MONO }} /></Field>
+            <Field label="Brand / Make"><Input value={itemForm.brand} onChange={e => setItemForm({ ...itemForm, brand: e.target.value })} placeholder="e.g. ABB, Siemens, Schneider" /></Field>
+            <Field label="Category"><Select value={itemForm.category} onChange={e => setItemForm({ ...itemForm, category: e.target.value })}><option value="">Select Category</option>{deviceCategories.map(d => <option key={d.id} value={d.id}>{d.icon} {d.name}</option>)}</Select></Field>
+            <Field label="Store / Location" required><Select value={itemForm.storeId} onChange={e => setItemForm({ ...itemForm, storeId: e.target.value })}><option value="">Select Store</option>{stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+            <Field label="Drawer / Shelf / Bin No."><Input value={itemForm.drawerNo} onChange={e => setItemForm({ ...itemForm, drawerNo: e.target.value.toUpperCase() })} placeholder="e.g. A1, B3, SHELF-2, BIN-05" style={{ fontFamily: MONO }} /></Field>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0 16px" }}>
+            <Field label="Quantity"><Input type="number" min="0" value={itemForm.qty} onChange={e => setItemForm({ ...itemForm, qty: parseInt(e.target.value) || 0 })} /></Field>
+            <Field label="Min Stock Level"><Input type="number" min="0" value={itemForm.minQty} onChange={e => setItemForm({ ...itemForm, minQty: parseInt(e.target.value) || 1 })} /></Field>
+            <Field label="Unit"><Select value={itemForm.unit} onChange={e => setItemForm({ ...itemForm, unit: e.target.value })}><option value="pcs">Pieces</option><option value="set">Sets</option><option value="mtr">Meters</option><option value="kg">Kilograms</option><option value="ltr">Litres</option><option value="box">Boxes</option><option value="roll">Rolls</option><option value="pair">Pairs</option></Select></Field>
+            <div />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+            <Field label="Purchase Price (₹)"><Input type="number" min="0" value={itemForm.purchasePrice} onChange={e => setItemForm({ ...itemForm, purchasePrice: parseFloat(e.target.value) || 0 })} style={{ fontFamily: MONO }} /></Field>
+            <Field label="Selling Price (₹)"><Input type="number" min="0" value={itemForm.sellingPrice} onChange={e => setItemForm({ ...itemForm, sellingPrice: parseFloat(e.target.value) || 0 })} style={{ fontFamily: MONO }} /></Field>
+          </div>
+
+          <Field label="Description / Notes"><TextArea value={itemForm.description} onChange={e => setItemForm({ ...itemForm, description: e.target.value })} placeholder="Specifications, compatibility notes..." style={{ minHeight: 50 }} /></Field>
+
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <Btn variant="secondary" onClick={() => { setShowAddItem(false); setEditItem(null); setItemForm(emptyItem); }}>Cancel</Btn>
+            <Btn onClick={handleAddItem} disabled={!itemForm.name || !itemForm.storeId}>{editItem ? "Update Item" : "Add to Inventory"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ADD STORE MODAL */}
+      {showAddStore && (
+        <Modal title="Add Store / Location" onClose={() => setShowAddStore(false)}>
+          <Field label="Store Name" required><Input value={storeForm.name} onChange={e => setStoreForm({ ...storeForm, name: e.target.value })} placeholder="e.g. Main Store, Warehouse B" /></Field>
+          <Field label="Location / Address"><Input value={storeForm.location} onChange={e => setStoreForm({ ...storeForm, location: e.target.value })} placeholder="e.g. Ground Floor, Workshop Area" /></Field>
+          <div style={{ padding: 12, background: C.surface2, borderRadius: 8, marginBottom: 16, fontSize: 12, color: C.textMuted, lineHeight: 1.6 }}>
+            <span style={{ fontWeight: 600, color: C.textDim }}>Tip:</span> Create separate stores for different physical locations. Within each store, use Drawer/Shelf/Bin numbers on individual items to track exact placement.
+          </div>
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <Btn variant="secondary" onClick={() => setShowAddStore(false)}>Cancel</Btn>
+            <Btn onClick={handleAddStore} disabled={!storeForm.name}>Add Store</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PRINT CENTER
+// ═══════════════════════════════════════════════════════════════════════════
+function PrintCenterPage({ printerSettings, onUpdate, jobs, onPrintJob, onPrintLabel, getCustomer, getDevice }) {
+  const activeJobs = jobs.filter(j => !["Delivered"].includes(j.status));
+  return (
+    <div>
+      <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 24px" }}>Print Center</h1>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 28 }}>
+        <Card>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: C.accent }}>🖨️ Job Sheet Printer</h3>
+          <Field label="Paper Size"><Select value={printerSettings.jobSheet.paperSize} onChange={e => onUpdate({ ...printerSettings, jobSheet: { ...printerSettings.jobSheet, paperSize: e.target.value } })}><option value="A4">A4</option><option value="A5">A5</option><option value="Letter">Letter</option><option value="Legal">Legal</option></Select></Field>
+          <Field label="Default Copies"><Input type="number" min="1" max="10" value={printerSettings.jobSheet.copies} onChange={e => onUpdate({ ...printerSettings, jobSheet: { ...printerSettings.jobSheet, copies: parseInt(e.target.value) || 1 } })} /></Field>
+        </Card>
+        <Card>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: C.accent }}>🏷️ Label Printer</h3>
+          <Field label="Label Type"><Select value={printerSettings.label.type} onChange={e => onUpdate({ ...printerSettings, label: { ...printerSettings.label, type: e.target.value } })}><option value="qr">QR Code</option><option value="barcode">Barcode</option></Select></Field>
+          <Field label="Label Size (mm)"><Select value={printerSettings.label.labelSize} onChange={e => onUpdate({ ...printerSettings, label: { ...printerSettings.label, labelSize: e.target.value } })}><option value="50x25">50 × 25</option><option value="50x30">50 × 30</option><option value="60x40">60 × 40</option><option value="70x35">70 × 35</option></Select></Field>
+          <Field label="Default Copies"><Input type="number" min="1" max="20" value={printerSettings.label.copies} onChange={e => onUpdate({ ...printerSettings, label: { ...printerSettings.label, copies: parseInt(e.target.value) || 1 } })} /></Field>
+        </Card>
+      </div>
+      <Card>
+        <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: C.text }}>Quick Print</h3>
+        <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>{["Job ID", "Customer", "Equipment", "Type", "Status", "Actions"].map(h => (<th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 11, fontWeight: 700, color: C.textMuted, borderBottom: `1px solid ${C.border}`, textTransform: "uppercase" }}>{h}</th>))}</tr></thead>
+          <tbody>{activeJobs.map(j => { const cust = getCustomer(j.customerId); const dev = getDevice(j.deviceCategory); return (
+            <tr key={j.id}><td style={{ padding: "10px 12px", fontFamily: MONO, fontSize: 13, color: C.accent, fontWeight: 600 }}>{j.id}</td><td style={{ padding: "10px 12px", fontSize: 13 }}>{cust?.name}</td><td style={{ padding: "10px 12px", fontSize: 13 }}>{dev?.icon} {dev?.name}</td><td style={{ padding: "10px 12px" }}><Badge label={j.serviceType || "Carry-In"} color={j.serviceType === "On-Site" ? C.warning : C.accent} /></td><td style={{ padding: "10px 12px" }}><Badge label={j.status} color={STATUS_COLORS[j.status]} /></td>
+            <td style={{ padding: "10px 12px" }}><div style={{ display: "flex", gap: 8 }}><Btn variant="secondary" small onClick={() => onPrintJob(j)}>🖨️ Sheet</Btn><Btn variant="secondary" small onClick={() => onPrintLabel(j)}>🏷️ Label</Btn></div></td></tr>
+          ); })}</tbody>
+        </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DATA BACKUP PAGE (Admin Only)
+// ═══════════════════════════════════════════════════════════════════════════
+function BackupPage({ jobs, customers, users, deviceCategories, printerSettings, showToast, setJobs, setCustomers, setUsers, setDeviceCategories }) {
+  const [backupHistory, setBackupHistory] = useState([]);
+  const [restoreConfirm, setRestoreConfirm] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const createBackup = (type = "full") => {
+    const backupData = {
+      version: "1.0", createdAt: new Date().toISOString(), type,
+      data: type === "full" ? { jobs, customers, users: users.map(u => ({ ...u, password: "***" })), deviceCategories, printerSettings }
+        : type === "jobs" ? { jobs } : type === "customers" ? { customers } : { jobs, customers, users: users.map(u => ({ ...u, password: "***" })), deviceCategories, printerSettings },
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `CRM_Backup_${type}_${new Date().toISOString().split("T")[0]}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    const entry = { id: backupHistory.length + 1, date: new Date().toISOString(), type: type === "full" ? "Full Backup" : type === "jobs" ? "Jobs Only" : "Customers Only", size: (blob.size / 1024).toFixed(1) + " KB", status: "success" };
+    setBackupHistory(prev => [entry, ...prev]);
+    showToast(`${entry.type} downloaded successfully`);
+  };
+
+  const handleRestore = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.version || !data.data) throw new Error("Invalid backup format");
+        if (data.data.jobs) setJobs(data.data.jobs);
+        if (data.data.customers) setCustomers(data.data.customers);
+        if (data.data.deviceCategories) setDeviceCategories(data.data.deviceCategories);
+        showToast(`Data restored from ${data.type} backup (${new Date(data.createdAt).toLocaleDateString("en-IN")})`, "success");
+        setRestoreConfirm(false);
+      } catch (err) { showToast("Invalid backup file: " + err.message, "error"); }
+    };
+    reader.readAsText(file); e.target.value = "";
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 28 }}><h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Data Backup & Restore</h1><p style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>Export and import your CRM data securely</p></div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 28 }}>
+        <StatCard label="Total Jobs" value={jobs.length} color={C.accent} icon="📋" />
+        <StatCard label="Customers" value={customers.length} color="#8b5cf6" icon="🏢" />
+        <StatCard label="Users" value={users.length} color={C.warning} icon="👥" />
+        <StatCard label="Categories" value={deviceCategories.length} color={C.success} icon="⚡" />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 28 }}>
+        <Card>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 6px", color: C.accent }}>📤 Create Backup</h3>
+          <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>Download a JSON backup file of your CRM data</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <Btn onClick={() => createBackup("full")} style={{ justifyContent: "center" }}><Icon d={Icons.download} size={16} color={C.bg} /> Full Backup (All Data)</Btn>
+            <Btn variant="secondary" onClick={() => createBackup("jobs")} style={{ justifyContent: "center" }}><Icon d={Icons.download} size={16} /> Jobs Data Only</Btn>
+            <Btn variant="secondary" onClick={() => createBackup("customers")} style={{ justifyContent: "center" }}><Icon d={Icons.download} size={16} /> Customers Data Only</Btn>
+          </div>
+        </Card>
+        <Card>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 6px", color: C.warning }}>📥 Restore Data</h3>
+          <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>Import data from a previously exported backup file</p>
+          <input type="file" accept=".json" ref={fileInputRef} onChange={handleRestore} style={{ display: "none" }} />
+          {!restoreConfirm ? (
+            <Btn variant="warning" onClick={() => setRestoreConfirm(true)} style={{ justifyContent: "center", width: "100%" }}><Icon d={Icons.backup} size={16} color={C.bg} /> Restore from Backup</Btn>
+          ) : (
+            <div style={{ padding: 16, background: C.warning + "12", border: `1px solid ${C.warning}44`, borderRadius: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.warning, marginBottom: 8 }}>⚠️ Warning</div>
+              <div style={{ fontSize: 12, color: C.textDim, marginBottom: 12 }}>Restoring will overwrite current data. This cannot be undone. Make sure you have a current backup before proceeding.</div>
+              <div style={{ display: "flex", gap: 8 }}><Btn variant="warning" small onClick={() => fileInputRef.current?.click()}>Choose Backup File</Btn><Btn variant="ghost" small onClick={() => setRestoreConfirm(false)}>Cancel</Btn></div>
+            </div>
+          )}
+        </Card>
+      </div>
+      <Card>
+        <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: C.text }}>Backup History</h3>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>{["Date & Time", "Type", "Size", "Status"].map(h => (<th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 11, fontWeight: 700, color: C.textMuted, borderBottom: `1px solid ${C.border}`, textTransform: "uppercase" }}>{h}</th>))}</tr></thead>
+          <tbody>{backupHistory.map(b => (
+            <tr key={b.id}><td style={{ padding: "10px 12px", fontSize: 13 }}>{new Date(b.date).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</td><td style={{ padding: "10px 12px", fontSize: 13 }}>{b.type}</td><td style={{ padding: "10px 12px", fontSize: 13, fontFamily: MONO }}>{b.size}</td><td style={{ padding: "10px 12px" }}><Badge label="Success" color={C.success} /></td></tr>
+          ))}</tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  USERS PAGE
+// ═══════════════════════════════════════════════════════════════════════════
+function UsersPage({ users, setUsers, currentUser, showToast }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: ROLES.TECHNICIAN });
+  const [changePwUser, setChangePwUser] = useState(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [removeUser, setRemoveUser] = useState(null);
+  const [removeConfirmText, setRemoveConfirmText] = useState("");
+
+  const handleAdd = () => {
+    if (!form.name || !form.email || !form.password) return;
+    if (users.find(u => u.email === form.email)) { showToast("Email already exists", "error"); return; }
+    setUsers(prev => [...prev, { ...form, id: "u" + Date.now() }]);
+    setShowAdd(false);
+    setForm({ name: "", email: "", password: "", role: ROLES.TECHNICIAN });
+    showToast("User added successfully");
+  };
+
+  const handleChangePassword = () => {
+    setPwError("");
+    if (!newPassword || newPassword.length < 4) { setPwError("Password must be at least 4 characters"); return; }
+    if (newPassword !== confirmPassword) { setPwError("Passwords do not match"); return; }
+    setUsers(prev => prev.map(u => u.id === changePwUser.id ? { ...u, password: newPassword } : u));
+    setChangePwUser(null);
+    setNewPassword("");
+    setConfirmPassword("");
+    showToast(`Password changed for ${changePwUser.name}`);
+  };
+
+  const handleRemoveUser = () => {
+    if (removeConfirmText !== "DELETE") return;
+    setUsers(prev => prev.filter(u => u.id !== removeUser.id));
+    setRemoveUser(null);
+    setRemoveConfirmText("");
+    showToast(`${removeUser.name} removed`, "warning");
+  };
+
+  const getRoleColor = (role) => role === ROLES.ADMIN ? C.danger : role === ROLES.MANAGER ? C.warning : role === ROLES.FRONT_DESK ? "#8b5cf6" : C.accent;
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div><h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>User Management</h1><p style={{ fontSize: 13, color: C.textMuted, margin: "4px 0 0" }}>{users.length} user{users.length !== 1 ? "s" : ""} registered</p></div>
+        <Btn onClick={() => setShowAdd(true)}><Icon d={Icons.plus} size={16} color={C.bg} /> Add User</Btn>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+        {users.map(u => {
+          const isSelf = u.id === currentUser.id;
+          const roleColor = getRoleColor(u.role);
+          return (
+            <Card key={u.id} style={{ position: "relative", borderLeft: `3px solid ${roleColor}` }}>
+              <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 14 }}>
+                <div style={{ width: 48, height: 48, borderRadius: 24, background: roleColor + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: roleColor }}>{u.name[0]}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: 15 }}>{u.name}</span>
+                    {isSelf && <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, background: C.accentDim, padding: "2px 6px", borderRadius: 4 }}>YOU</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.textMuted, fontFamily: MONO, marginTop: 2 }}>{u.email}</div>
+                </div>
+                <Badge label={ROLE_LABELS[u.role]} color={roleColor} />
+              </div>
+
+              <div style={{ display: "flex", gap: 8, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                <Btn variant="secondary" small onClick={() => { setChangePwUser(u); setNewPassword(""); setConfirmPassword(""); setPwError(""); }}>
+                  🔑 Change Password
+                </Btn>
+                {!isSelf && (
+                  <Btn variant="danger" small onClick={() => { setRemoveUser(u); setRemoveConfirmText(""); }}>
+                    🗑️ Remove
+                  </Btn>
+                )}
+                {isSelf && (
+                  <span style={{ fontSize: 11, color: C.textMuted, display: "flex", alignItems: "center", marginLeft: 4 }}>Cannot remove yourself</span>
+                )}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Add User Modal */}
+      {showAdd && <Modal title="Add New User" onClose={() => setShowAdd(false)}>
+        <Field label="Full Name" required><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Enter full name" /></Field>
+        <Field label="Email" required><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="user@email.com" /></Field>
+        <Field label="Password" required><Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Set password (min 4 chars)" /></Field>
+        <Field label="Role"><Select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>{Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
+        <div style={{ padding: 12, background: C.surface2, borderRadius: 8, marginBottom: 16, fontSize: 12, color: C.textDim, lineHeight: 1.5 }}>
+          <strong style={{ color: C.text }}>Role Permissions:</strong><br />
+          <span style={{ color: C.danger }}>Admin</span> — Full system control & all modules<br />
+          <span style={{ color: C.warning }}>Manager</span> — Full access, monitor all operations<br />
+          <span style={{ color: "#8b5cf6" }}>Front Desk</span> — Create jobs, customers, print, no tech access<br />
+          <span style={{ color: C.accent }}>Technician</span> — View assigned jobs, update inspection & status
+        </div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}><Btn variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Btn><Btn onClick={handleAdd} disabled={!form.name || !form.email || !form.password}>Add User</Btn></div>
+      </Modal>}
+
+      {/* Change Password Modal */}
+      {changePwUser && <Modal title={`Change Password — ${changePwUser.name}`} onClose={() => setChangePwUser(null)}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 16px", background: C.surface2, borderRadius: 8, marginBottom: 20 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 20, background: getRoleColor(changePwUser.role) + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, color: getRoleColor(changePwUser.role) }}>{changePwUser.name[0]}</div>
+          <div><div style={{ fontWeight: 600, fontSize: 14 }}>{changePwUser.name}</div><div style={{ fontSize: 12, color: C.textMuted, fontFamily: MONO }}>{changePwUser.email}</div></div>
+          <Badge label={ROLE_LABELS[changePwUser.role]} color={getRoleColor(changePwUser.role)} />
+        </div>
+        <Field label="New Password" required><Input type="password" value={newPassword} onChange={e => { setNewPassword(e.target.value); setPwError(""); }} placeholder="Enter new password (min 4 chars)" /></Field>
+        <Field label="Confirm New Password" required><Input type="password" value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setPwError(""); }} placeholder="Re-enter new password" onKeyDown={e => e.key === "Enter" && handleChangePassword()} /></Field>
+        {newPassword && confirmPassword && newPassword === confirmPassword && <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.success, fontSize: 12, marginBottom: 12 }}><Icon d={Icons.check} size={14} color={C.success} /> Passwords match</div>}
+        {newPassword && confirmPassword && newPassword !== confirmPassword && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12 }}>⚠️ Passwords do not match</div>}
+        {pwError && <div style={{ color: C.danger, fontSize: 13, marginBottom: 12, padding: "8px 12px", background: C.danger + "12", borderRadius: 6 }}>{pwError}</div>}
+        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}><Btn variant="secondary" onClick={() => setChangePwUser(null)}>Cancel</Btn><Btn onClick={handleChangePassword} disabled={!newPassword || !confirmPassword}>🔑 Update Password</Btn></div>
+      </Modal>}
+
+      {/* Remove User Confirmation Modal */}
+      {removeUser && <Modal title="Remove User Account" onClose={() => setRemoveUser(null)}>
+        <div style={{ padding: 16, background: C.danger + "12", border: `1px solid ${C.danger}33`, borderRadius: 10, marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 24 }}>⚠️</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: C.danger }}>This action cannot be undone</span>
+          </div>
+          <div style={{ fontSize: 13, color: C.textDim, lineHeight: 1.6 }}>
+            You are about to permanently remove the following user account. Any jobs assigned to this user will remain but will show as unassigned.
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "14px 16px", background: C.surface2, borderRadius: 8, marginBottom: 20 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 22, background: getRoleColor(removeUser.role) + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: getRoleColor(removeUser.role) }}>{removeUser.name[0]}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{removeUser.name}</div>
+            <div style={{ fontSize: 12, color: C.textMuted, fontFamily: MONO }}>{removeUser.email}</div>
+          </div>
+          <Badge label={ROLE_LABELS[removeUser.role]} color={getRoleColor(removeUser.role)} />
+        </div>
+
+        <Field label={<span>Type <span style={{ color: C.danger, fontFamily: MONO, fontWeight: 800 }}>DELETE</span> to confirm</span>} required>
+          <Input value={removeConfirmText} onChange={e => setRemoveConfirmText(e.target.value.toUpperCase())} placeholder="Type DELETE here..." style={{ fontFamily: MONO, letterSpacing: 2, textAlign: "center", fontSize: 16, fontWeight: 700, color: removeConfirmText === "DELETE" ? C.danger : C.text }} />
+        </Field>
+
+        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+          <Btn variant="secondary" onClick={() => setRemoveUser(null)}>Cancel</Btn>
+          <Btn variant="danger" onClick={handleRemoveUser} disabled={removeConfirmText !== "DELETE"}>🗑️ Remove User Permanently</Btn>
+        </div>
+      </Modal>}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ACCOUNTS PAGE (Invoice & Delivery Challan)
+// ═══════════════════════════════════════════════════════════════════════════
+function AccountsPage({ invoices, setInvoices, challans, setChallans, jobs, customers, getCustomer, getDevice, companyDetails, showToast }) {
+  const [tab, setTab] = useState("invoices");
+  const [showCreate, setShowCreate] = useState(null); // "invoice" | "challan"
+  const [viewDoc, setViewDoc] = useState(null);
+
+  const completedJobs = jobs.filter(j => ["Completed", "Delivered"].includes(j.status));
+  const totalRevenue = invoices.reduce((s, inv) => { const sub = inv.items.reduce((a, i) => a + i.qty * i.rate, 0); return s + sub + sub * inv.gstPercent / 100; }, 0);
+  const paidRevenue = invoices.filter(i => i.status === "paid").reduce((s, inv) => { const sub = inv.items.reduce((a, i) => a + i.qty * i.rate, 0); return s + sub + sub * inv.gstPercent / 100; }, 0);
+
+  const nextInvId = "INV-2026-" + String(invoices.length + 1).padStart(4, "0");
+  const nextDcId = "DC-2026-" + String(challans.length + 1).padStart(4, "0");
+
+  const printInvoice = (inv) => {
+    const cust = getCustomer(inv.customerId);
+    const subtotal = inv.items.reduce((a, i) => a + i.qty * i.rate, 0);
+    const gstAmt = subtotal * inv.gstPercent / 100;
+    const total = subtotal + gstAmt;
+    const html = `
+      <div class="header"><div>${companyDetails.logo ? `<img src="${companyDetails.logo}" style="height:50px;margin-bottom:4px;display:block"/>` : ""}<h1>${companyDetails.name}</h1><div class="meta">${companyDetails.address}</div><div class="meta">📞 ${companyDetails.phone} | ✉ ${companyDetails.email}</div><div class="meta" style="font-weight:600">GSTIN: ${companyDetails.gstNo}</div></div><div style="text-align:right"><div style="font-size:22px;font-weight:800;color:#333">TAX INVOICE</div><div style="font-size:16px;font-weight:700;font-family:monospace;margin:4px 0">${inv.id}</div><div class="meta">Date: ${new Date(inv.date).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</div><div class="meta">Due: ${new Date(inv.dueDate).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</div><div class="badge" style="background:${inv.status==="paid"?"#10b98122":"#ef444422"};color:${inv.status==="paid"?"#059669":"#dc2626"};margin-top:6px">${inv.status==="paid"?"PAID":"UNPAID"}</div></div></div>
+      <h2>Bill To</h2><table><tr><th>Company</th><td>${cust?.name||"—"}</td><th>GST No.</th><td style="font-family:monospace">${cust?.gstNo||"N/A"}</td></tr><tr><th>Contact</th><td>${cust?.contactPerson||"—"}</td><th>Phone</th><td>${cust?.phone||"—"}</td></tr><tr><th colspan="1">Address</th><td colspan="3">${cust?.address||"—"}</td></tr></table>
+      <h2>Items</h2><table><tr><th>#</th><th>Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Rate (₹)</th><th style="text-align:right">Amount (₹)</th></tr>${inv.items.map((item,i)=>`<tr><td>${i+1}</td><td>${item.desc}</td><td style="text-align:right">${item.qty}</td><td style="text-align:right;font-family:monospace">${item.rate.toLocaleString("en-IN")}</td><td style="text-align:right;font-family:monospace">${(item.qty*item.rate).toLocaleString("en-IN")}</td></tr>`).join("")}
+      <tr style="border-top:2px solid #333"><th colspan="4" style="text-align:right">Subtotal</th><td style="text-align:right;font-family:monospace;font-weight:700">₹${subtotal.toLocaleString("en-IN")}</td></tr><tr><th colspan="4" style="text-align:right">GST @ ${inv.gstPercent}%</th><td style="text-align:right;font-family:monospace">₹${gstAmt.toLocaleString("en-IN")}</td></tr><tr style="background:#f0f0f0"><th colspan="4" style="text-align:right;font-size:15px">Grand Total</th><td style="text-align:right;font-family:monospace;font-size:15px;font-weight:800">₹${total.toLocaleString("en-IN")}</td></tr></table>
+      ${inv.notes?`<p style="margin-top:10px;font-size:12px;color:#666">Note: ${inv.notes}</p>`:""}
+      ${companyDetails.bankName?`<h2>Bank Details</h2><table><tr><th>Bank</th><td>${companyDetails.bankName}</td><th>Account No.</th><td style="font-family:monospace">${companyDetails.bankAccount}</td></tr><tr><th>IFSC</th><td style="font-family:monospace">${companyDetails.bankIfsc}</td><th></th><td></td></tr></table>`:""}
+      <div style="margin-top:40px;display:flex;justify-content:space-between"><div style="font-size:11px;color:#999">This is a computer generated invoice</div><div><div style="border-top:1px solid #999;width:200px;margin-top:40px;padding-top:4px;font-size:12px">Authorized Signatory</div></div></div>`;
+    printContent(html, `Invoice - ${inv.id}`);
+  };
+
+  const printChallan = (dc) => {
+    const cust = getCustomer(dc.customerId);
+    const html = `
+      <div class="header"><div>${companyDetails.logo ? `<img src="${companyDetails.logo}" style="height:50px;margin-bottom:4px;display:block"/>` : ""}<h1>${companyDetails.name}</h1><div class="meta">${companyDetails.address}</div><div class="meta">GSTIN: ${companyDetails.gstNo}</div></div><div style="text-align:right"><div style="font-size:22px;font-weight:800;color:#333">DELIVERY CHALLAN</div><div style="font-size:16px;font-weight:700;font-family:monospace;margin:4px 0">${dc.id}</div><div class="meta">Date: ${new Date(dc.date).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</div></div></div>
+      <h2>Deliver To</h2><table><tr><th>Company</th><td>${cust?.name||"—"}</td><th>GST No.</th><td style="font-family:monospace">${cust?.gstNo||"N/A"}</td></tr><tr><th>Contact</th><td>${cust?.contactPerson||"—"}</td><th>Phone</th><td>${cust?.phone||"—"}</td></tr><tr><th>Address</th><td colspan="3">${cust?.address||"—"}</td></tr></table>
+      <h2>Items</h2><table><tr><th>#</th><th>Description</th><th style="text-align:right">Qty</th></tr>${dc.items.map((item,i)=>`<tr><td>${i+1}</td><td>${item.desc}</td><td style="text-align:right">${item.qty}</td></tr>`).join("")}</table>
+      <h2>Transport Details</h2><table><tr><th>Vehicle No.</th><td>${dc.vehicleNo||"—"}</td><th>Transport Mode</th><td>${dc.transportMode||"—"}</td></tr></table>
+      ${dc.notes?`<p style="margin-top:10px;font-size:12px;color:#666">Note: ${dc.notes}</p>`:""}
+      <div style="margin-top:40px;display:flex;justify-content:space-between"><div><div style="border-top:1px solid #999;width:180px;margin-top:40px;padding-top:4px;font-size:12px">Received By (Sign & Stamp)</div></div><div><div style="border-top:1px solid #999;width:180px;margin-top:40px;padding-top:4px;font-size:12px">Authorized Signatory</div></div></div>`;
+    printContent(html, `Delivery Challan - ${dc.id}`);
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <div><h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Accounts</h1><p style={{ fontSize: 13, color: C.textMuted, margin: "4px 0 0" }}>Invoices & Delivery Challans</p></div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn onClick={() => setShowCreate("invoice")}><Icon d={Icons.plus} size={16} color={C.bg} /> New Invoice</Btn>
+          <Btn variant="secondary" onClick={() => setShowCreate("challan")}><Icon d={Icons.plus} size={16} /> New Challan</Btn>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 28 }}>
+        <StatCard label="Invoices" value={invoices.length} color={C.accent} icon="📄" />
+        <StatCard label="Total Revenue" value={`₹${(totalRevenue/1000).toFixed(1)}k`} color={C.success} icon="💰" />
+        <StatCard label="Paid" value={`₹${(paidRevenue/1000).toFixed(1)}k`} color="#10b981" icon="✅" />
+        <StatCard label="Unpaid" value={`₹${((totalRevenue-paidRevenue)/1000).toFixed(1)}k`} color={C.danger} icon="⏳" />
+        <StatCard label="Challans" value={challans.length} color={C.warning} icon="🚚" />
+      </div>
+
+      <div style={{ display: "flex", gap: 0, marginBottom: 20, borderRadius: 10, overflow: "hidden", border: `1px solid ${C.border}`, maxWidth: 400 }}>
+        {[{id:"invoices",label:"📄 Invoices"},{id:"challans",label:"🚚 Delivery Challans"}].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "10px 16px", border: "none", cursor: "pointer", fontFamily: FONT, fontSize: 13, fontWeight: 600, background: tab === t.id ? C.accent : C.surface2, color: tab === t.id ? C.bg : C.textMuted, transition: "all 0.2s" }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === "invoices" && (
+        <div style={{ display: "grid", gap: 12 }}>
+          {invoices.length === 0 ? <EmptyState icon="📄" message="No invoices yet" /> : invoices.map(inv => {
+            const cust = getCustomer(inv.customerId); const subtotal = inv.items.reduce((a, i) => a + i.qty * i.rate, 0); const total = subtotal + subtotal * inv.gstPercent / 100;
+            return (
+              <Card key={inv.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: C.accent }}>{inv.id}</span>
+                      <Badge label={inv.status === "paid" ? "Paid" : "Unpaid"} color={inv.status === "paid" ? C.success : C.danger} />
+                      {inv.jobId && <span style={{ fontSize: 11, color: C.textMuted, fontFamily: MONO }}>→ {inv.jobId}</span>}
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{cust?.name}</div>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{inv.items.length} item{inv.items.length > 1 ? "s" : ""} · {new Date(inv.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.success, fontFamily: MONO }}>₹{total.toLocaleString("en-IN")}</div>
+                    <div style={{ fontSize: 11, color: C.textMuted }}>incl. GST {inv.gstPercent}%</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                  <Btn variant="ghost" small onClick={() => printInvoice(inv)}>🖨️ Print</Btn>
+                  {inv.status === "unpaid" && <Btn variant="success" small onClick={() => { setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, status: "paid" } : i)); showToast(`${inv.id} marked as paid`); }}>✅ Mark Paid</Btn>}
+                  {inv.status === "paid" && <Btn variant="ghost" small onClick={() => { setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, status: "unpaid" } : i)); showToast(`${inv.id} marked as unpaid`, "warning"); }}>↩️ Mark Unpaid</Btn>}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "challans" && (
+        <div style={{ display: "grid", gap: 12 }}>
+          {challans.length === 0 ? <EmptyState icon="🚚" message="No delivery challans yet" /> : challans.map(dc => {
+            const cust = getCustomer(dc.customerId);
+            return (
+              <Card key={dc.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: C.warning }}>{dc.id}</span>
+                      {dc.jobId && <span style={{ fontSize: 11, color: C.textMuted, fontFamily: MONO }}>→ {dc.jobId}</span>}
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{cust?.name}</div>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{dc.items.length} item{dc.items.length > 1 ? "s" : ""} · {new Date(dc.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div>
+                  </div>
+                  <div style={{ textAlign: "right", fontSize: 12, color: C.textDim }}>
+                    {dc.vehicleNo && <div>🚛 {dc.vehicleNo}</div>}
+                    <div>{dc.transportMode}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                  <Btn variant="ghost" small onClick={() => printChallan(dc)}>🖨️ Print</Btn>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* CREATE INVOICE MODAL */}
+      {showCreate === "invoice" && <CreateInvoiceModal id={nextInvId} jobs={completedJobs} customers={customers} getCustomer={getCustomer} onClose={() => setShowCreate(null)} onSubmit={(inv) => { setInvoices(prev => [...prev, inv]); setShowCreate(null); showToast(`Invoice ${inv.id} created`); }} />}
+      {showCreate === "challan" && <CreateChallanModal id={nextDcId} jobs={completedJobs} customers={customers} getCustomer={getCustomer} onClose={() => setShowCreate(null)} onSubmit={(dc) => { setChallans(prev => [...prev, dc]); setShowCreate(null); showToast(`Challan ${dc.id} created`); }} />}
+    </div>
+  );
+}
+
+// ── Create Invoice Modal ──
+function CreateInvoiceModal({ id, jobs, customers, getCustomer, onClose, onSubmit }) {
+  const [form, setForm] = useState({ id, jobId: "", customerId: "", date: new Date().toISOString().split("T")[0], dueDate: "", items: [{ desc: "", qty: 1, rate: 0 }], gstPercent: 18, status: "unpaid", notes: "" });
+
+  const addItem = () => setForm(prev => ({ ...prev, items: [...prev.items, { desc: "", qty: 1, rate: 0 }] }));
+  const removeItem = (idx) => setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
+  const updateItem = (idx, field, val) => setForm(prev => ({ ...prev, items: prev.items.map((item, i) => i === idx ? { ...item, [field]: val } : item) }));
+  const subtotal = form.items.reduce((a, i) => a + i.qty * i.rate, 0);
+  const gstAmt = subtotal * form.gstPercent / 100;
+  const valid = form.customerId && form.date && form.items.length > 0 && form.items.every(i => i.desc);
+
+  const handleJobSelect = (jobId) => {
+    const job = jobs.find(j => j.id === jobId);
+    if (job) setForm(prev => ({ ...prev, jobId, customerId: job.customerId, items: job.estimate ? [{ desc: `Service & Repair — ${job.deviceBrand} ${job.deviceModel}`, qty: 1, rate: job.estimate }] : prev.items }));
+  };
+
+  return (
+    <Modal title={`Create Invoice — ${id}`} onClose={onClose} wide>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+        <Field label="Link to Job (optional)"><Select value={form.jobId} onChange={e => handleJobSelect(e.target.value)}><option value="">Select Job</option>{jobs.map(j => <option key={j.id} value={j.id}>{j.id} — {getCustomer(j.customerId)?.name}</option>)}</Select></Field>
+        <Field label="Customer" required><Select value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })}><option value="">Select Customer</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name} {c.gstNo ? `(${c.gstNo})` : ""}</option>)}</Select></Field>
+        <Field label="Invoice Date" required><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></Field>
+        <Field label="Due Date"><Input type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></Field>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: 0.8 }}>Line Items</label>
+          <Btn variant="ghost" small onClick={addItem}><Icon d={Icons.plus} size={14} /> Add Item</Btn>
+        </div>
+        {form.items.map((item, idx) => (
+          <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <Input value={item.desc} onChange={e => updateItem(idx, "desc", e.target.value)} placeholder="Description" style={{ flex: 3 }} />
+            <Input type="number" value={item.qty} onChange={e => updateItem(idx, "qty", parseInt(e.target.value) || 0)} placeholder="Qty" style={{ flex: 0.5, textAlign: "center" }} />
+            <Input type="number" value={item.rate} onChange={e => updateItem(idx, "rate", parseFloat(e.target.value) || 0)} placeholder="Rate ₹" style={{ flex: 1, fontFamily: MONO }} />
+            <div style={{ flex: 1, textAlign: "right", fontFamily: MONO, fontSize: 13, fontWeight: 600, color: C.text }}>₹{(item.qty * item.rate).toLocaleString("en-IN")}</div>
+            {form.items.length > 1 && <button onClick={() => removeItem(idx)} style={{ background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: 16 }}>×</button>}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+        <Field label="GST %"><Input type="number" value={form.gstPercent} onChange={e => setForm({ ...form, gstPercent: parseFloat(e.target.value) || 0 })} /></Field>
+        <div style={{ padding: "16px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textDim, marginBottom: 4 }}><span>Subtotal</span><span style={{ fontFamily: MONO }}>₹{subtotal.toLocaleString("en-IN")}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.textDim, marginBottom: 4 }}><span>GST {form.gstPercent}%</span><span style={{ fontFamily: MONO }}>₹{gstAmt.toLocaleString("en-IN")}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: C.success, borderTop: `1px solid ${C.border}`, paddingTop: 6 }}><span>Total</span><span style={{ fontFamily: MONO }}>₹{(subtotal + gstAmt).toLocaleString("en-IN")}</span></div>
+        </div>
+      </div>
+      <Field label="Notes"><TextArea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Payment terms, remarks..." style={{ minHeight: 50 }} /></Field>
+      <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}><Btn variant="secondary" onClick={onClose}>Cancel</Btn><Btn onClick={() => onSubmit(form)} disabled={!valid}>Create Invoice</Btn></div>
+    </Modal>
+  );
+}
+
+// ── Create Challan Modal ──
+function CreateChallanModal({ id, jobs, customers, getCustomer, onClose, onSubmit }) {
+  const [form, setForm] = useState({ id, jobId: "", customerId: "", date: new Date().toISOString().split("T")[0], items: [{ desc: "", qty: 1 }], vehicleNo: "", transportMode: "Company Vehicle", notes: "" });
+
+  const addItem = () => setForm(prev => ({ ...prev, items: [...prev.items, { desc: "", qty: 1 }] }));
+  const removeItem = (idx) => setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
+  const updateItem = (idx, field, val) => setForm(prev => ({ ...prev, items: prev.items.map((item, i) => i === idx ? { ...item, [field]: val } : item) }));
+  const valid = form.customerId && form.date && form.items.length > 0 && form.items.every(i => i.desc);
+
+  const handleJobSelect = (jobId) => {
+    const job = jobs.find(j => j.id === jobId);
+    if (job) setForm(prev => ({ ...prev, jobId, customerId: job.customerId, items: [{ desc: `${job.deviceBrand} ${job.deviceModel} (Repaired/Serviced)`, qty: 1 }, ...(job.accessories || []).map(a => ({ desc: a, qty: 1 }))] }));
+  };
+
+  return (
+    <Modal title={`Create Delivery Challan — ${id}`} onClose={onClose} wide>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+        <Field label="Link to Job (optional)"><Select value={form.jobId} onChange={e => handleJobSelect(e.target.value)}><option value="">Select Job</option>{jobs.map(j => <option key={j.id} value={j.id}>{j.id} — {getCustomer(j.customerId)?.name}</option>)}</Select></Field>
+        <Field label="Customer" required><Select value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })}><option value="">Select Customer</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+        <Field label="Challan Date" required><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></Field>
+        <Field label="Vehicle Number"><Input value={form.vehicleNo} onChange={e => setForm({ ...form, vehicleNo: e.target.value.toUpperCase() })} placeholder="e.g. AS-01-AB-1234" style={{ fontFamily: MONO }} /></Field>
+      </div>
+      <Field label="Transport Mode"><Select value={form.transportMode} onChange={e => setForm({ ...form, transportMode: e.target.value })}><option>Company Vehicle</option><option>Courier</option><option>Customer Pickup</option><option>Third Party Transport</option><option>Hand Delivery</option></Select></Field>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: 0.8 }}>Items to Deliver</label>
+          <Btn variant="ghost" small onClick={addItem}><Icon d={Icons.plus} size={14} /> Add Item</Btn>
+        </div>
+        {form.items.map((item, idx) => (
+          <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <Input value={item.desc} onChange={e => updateItem(idx, "desc", e.target.value)} placeholder="Item description" style={{ flex: 4 }} />
+            <Input type="number" value={item.qty} onChange={e => updateItem(idx, "qty", parseInt(e.target.value) || 0)} placeholder="Qty" style={{ flex: 0.6, textAlign: "center" }} />
+            {form.items.length > 1 && <button onClick={() => removeItem(idx)} style={{ background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: 16 }}>×</button>}
+          </div>
+        ))}
+      </div>
+      <Field label="Notes"><TextArea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Delivery instructions, remarks..." style={{ minHeight: 50 }} /></Field>
+      <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}><Btn variant="secondary" onClick={onClose}>Cancel</Btn><Btn onClick={() => onSubmit(form)} disabled={!valid}>Create Delivery Challan</Btn></div>
+    </Modal>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SETTINGS PAGE (Company, Printer, Theme)
+// ═══════════════════════════════════════════════════════════════════════════
+function SettingsPage({ printerSettings, onUpdate, companyDetails, setCompanyDetails, theme, setTheme, showToast }) {
+  const [tab, setTab] = useState("company");
+  const themes = [
+    { id: "cyan", label: "Cyan Ice", accent: "#22d3ee", bg: "#0a0e17" },
+    { id: "emerald", label: "Emerald", accent: "#10b981", bg: "#0a1210" },
+    { id: "amber", label: "Amber Gold", accent: "#f59e0b", bg: "#0f0d08" },
+    { id: "violet", label: "Violet", accent: "#8b5cf6", bg: "#0c0a14" },
+    { id: "rose", label: "Rose", accent: "#f43f5e", bg: "#110a0c" },
+    { id: "blue", label: "Classic Blue", accent: "#3b82f6", bg: "#080c14" },
+  ];
+  const tabs = [
+    { id: "company", label: "🏢 Company Details" },
+    { id: "printer", label: "🖨️ Printer Config" },
+    { id: "theme", label: "🎨 Theme" },
+  ];
+  const handleLogoUpload = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { setCompanyDetails(prev => ({ ...prev, logo: ev.target.result })); showToast("Logo uploaded"); };
+    reader.readAsDataURL(file); e.target.value = "";
+  };
+  return (
+    <div>
+      <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 24px" }}>Settings</h1>
+      <div style={{ display: "flex", gap: 0, marginBottom: 28, borderRadius: 10, overflow: "hidden", border: `1px solid ${C.border}` }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "12px 16px", border: "none", cursor: "pointer", fontFamily: FONT, fontSize: 13, fontWeight: 600, background: tab === t.id ? C.accent : C.surface2, color: tab === t.id ? C.bg : C.textMuted, transition: "all 0.2s" }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === "company" && (
+        <div style={{ display: "grid", gap: 24, maxWidth: 700 }}>
+          <Card>
+            <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 20px", color: C.accent }}>🏢 Company Information</h3>
+            <div style={{ display: "flex", gap: 20, marginBottom: 20, alignItems: "center" }}>
+              <div style={{ width: 80, height: 80, borderRadius: 12, border: `2px dashed ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: C.surface2, flexShrink: 0 }}>
+                {companyDetails.logo ? <img src={companyDetails.logo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ fontSize: 28, opacity: 0.3 }}>🏭</span>}
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 6 }}>Company Logo</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <label style={{ padding: "6px 14px", borderRadius: 6, background: C.accentDim, color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FONT }}>
+                    Upload Logo <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: "none" }} />
+                  </label>
+                  {companyDetails.logo && <Btn variant="ghost" small onClick={() => { setCompanyDetails(prev => ({ ...prev, logo: "" })); showToast("Logo removed", "warning"); }}>Remove</Btn>}
+                </div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>PNG, JPG — used on invoices & challans</div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+              <Field label="Company Name" required><Input value={companyDetails.name} onChange={e => setCompanyDetails(prev => ({ ...prev, name: e.target.value }))} /></Field>
+              <Field label="GST Number" required><Input value={companyDetails.gstNo} onChange={e => setCompanyDetails(prev => ({ ...prev, gstNo: e.target.value.toUpperCase() }))} style={{ fontFamily: MONO, letterSpacing: 1 }} /></Field>
+              <Field label="Phone"><Input value={companyDetails.phone} onChange={e => setCompanyDetails(prev => ({ ...prev, phone: e.target.value }))} /></Field>
+              <Field label="Email"><Input value={companyDetails.email} onChange={e => setCompanyDetails(prev => ({ ...prev, email: e.target.value }))} /></Field>
+              <Field label="Website"><Input value={companyDetails.website} onChange={e => setCompanyDetails(prev => ({ ...prev, website: e.target.value }))} /></Field>
+            </div>
+            <Field label="Address"><TextArea value={companyDetails.address} onChange={e => setCompanyDetails(prev => ({ ...prev, address: e.target.value }))} style={{ minHeight: 60 }} /></Field>
+          </Card>
+          <Card>
+            <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 20px", color: C.accent }}>🏦 Bank Details (for invoices)</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+              <Field label="Bank Name"><Input value={companyDetails.bankName} onChange={e => setCompanyDetails(prev => ({ ...prev, bankName: e.target.value }))} /></Field>
+              <Field label="Account Number"><Input value={companyDetails.bankAccount} onChange={e => setCompanyDetails(prev => ({ ...prev, bankAccount: e.target.value }))} style={{ fontFamily: MONO }} /></Field>
+              <Field label="IFSC Code"><Input value={companyDetails.bankIfsc} onChange={e => setCompanyDetails(prev => ({ ...prev, bankIfsc: e.target.value.toUpperCase() }))} style={{ fontFamily: MONO }} /></Field>
+            </div>
+          </Card>
+          <Btn onClick={() => showToast("Company details saved")} style={{ justifyContent: "center" }}>💾 Save Company Details</Btn>
+        </div>
+      )}
+
+      {tab === "printer" && (
+        <div style={{ display: "grid", gap: 24, maxWidth: 600 }}>
+          <Card><h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: C.accent }}>🖨️ Job Sheet Printer</h3>
+            <Field label="Default Paper Size"><Select value={printerSettings.jobSheet.paperSize} onChange={e => onUpdate({ ...printerSettings, jobSheet: { ...printerSettings.jobSheet, paperSize: e.target.value } })}><option value="A4">A4 (210 × 297 mm)</option><option value="A5">A5 (148 × 210 mm)</option><option value="Letter">Letter (8.5 × 11 in)</option><option value="Legal">Legal (8.5 × 14 in)</option></Select></Field>
+            <Field label="Default Copies"><Input type="number" min="1" max="10" value={printerSettings.jobSheet.copies} onChange={e => onUpdate({ ...printerSettings, jobSheet: { ...printerSettings.jobSheet, copies: parseInt(e.target.value) || 1 } })} /></Field>
+          </Card>
+          <Card><h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 16px", color: C.accent }}>🏷️ Label Printer</h3>
+            <Field label="Default Label Type"><Select value={printerSettings.label.type} onChange={e => onUpdate({ ...printerSettings, label: { ...printerSettings.label, type: e.target.value } })}><option value="qr">QR Code</option><option value="barcode">Barcode</option></Select></Field>
+            <Field label="Default Label Size"><Select value={printerSettings.label.labelSize} onChange={e => onUpdate({ ...printerSettings, label: { ...printerSettings.label, labelSize: e.target.value } })}><option value="50x25">50 × 25 mm</option><option value="50x30">50 × 30 mm</option><option value="60x40">60 × 40 mm</option><option value="70x35">70 × 35 mm</option></Select></Field>
+            <Field label="Default Copies"><Input type="number" min="1" max="20" value={printerSettings.label.copies} onChange={e => onUpdate({ ...printerSettings, label: { ...printerSettings.label, copies: parseInt(e.target.value) || 1 } })} /></Field>
+          </Card>
+        </div>
+      )}
+
+      {tab === "theme" && (
+        <div style={{ maxWidth: 600 }}>
+          <Card>
+            <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 6px", color: C.accent }}>🎨 Application Theme</h3>
+            <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>Choose your preferred accent color theme</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              {themes.map(t => (
+                <button key={t.id} onClick={() => { setTheme(t.id); showToast(`Theme set to ${t.label} (applies on next reload)`); }} style={{
+                  padding: 16, borderRadius: 10, border: theme === t.id ? `2px solid ${t.accent}` : `1px solid ${C.border}`,
+                  background: theme === t.id ? t.accent + "15" : C.surface2, cursor: "pointer", textAlign: "center", transition: "all 0.2s",
+                }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 18, background: t.accent, margin: "0 auto 8px", boxShadow: theme === t.id ? `0 0 16px ${t.accent}44` : "none" }} />
+                  <div style={{ fontSize: 13, fontWeight: 600, color: theme === t.id ? t.accent : C.textDim }}>{t.label}</div>
+                  {theme === t.id && <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>✓ Active</div>}
+                </button>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CREATE JOB MODAL (with accessories & service type)
+// ═══════════════════════════════════════════════════════════════════════════
+function CreateJobModal({ customers, deviceCategories, technicians, onSubmit, onClose, nextId }) {
+  const [form, setForm] = useState({ customerId: "", deviceCategory: "", deviceBrand: "", deviceModel: "", serialNumber: "", problemDescription: "", assignedTo: "", serviceType: "Carry-In", accessories: [], customAccessories: "" });
+  const [accSearch, setAccSearch] = useState("");
+  const [showAccDropdown, setShowAccDropdown] = useState(false);
+  const filteredAcc = ACCESSORY_OPTIONS.filter(a => !form.accessories.includes(a) && a.toLowerCase().includes(accSearch.toLowerCase()));
+  const valid = form.customerId && form.deviceCategory && form.problemDescription;
+
+  const toggleAcc = (acc) => setForm(prev => ({ ...prev, accessories: prev.accessories.includes(acc) ? prev.accessories.filter(a => a !== acc) : [...prev.accessories, acc] }));
+
+  return (
+    <Modal title="Create New Job Sheet" onClose={onClose} wide>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 20, padding: "12px 16px", background: C.accentDim, borderRadius: 8 }}>
+        <span style={{ fontSize: 12, color: C.textDim }}>Job ID:</span>
+        <span style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: C.accent }}>{nextId}</span>
+      </div>
+
+      {/* Service Type Toggle */}
+      <Field label="Service Type" required>
+        <div style={{ display: "flex", gap: 0, borderRadius: 8, overflow: "hidden", border: `1px solid ${C.border}` }}>
+          {SERVICE_TYPES.map(t => (
+            <button key={t} onClick={() => setForm({ ...form, serviceType: t })} style={{ flex: 1, padding: "12px 16px", border: "none", cursor: "pointer", fontFamily: FONT, fontSize: 14, fontWeight: 600, background: form.serviceType === t ? (t === "On-Site" ? C.warning : C.accent) : C.surface2, color: form.serviceType === t ? C.bg : C.textMuted, transition: "all 0.2s" }}>
+              {t === "Carry-In" ? "🏪 Carry-In" : "🏭 On-Site"}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
+        <Field label="Customer" required><Select value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })}><option value="">Select Customer</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name} {c.gstNo ? `(GST: ${c.gstNo})` : ""}</option>)}</Select></Field>
+        <Field label="Equipment Category" required><Select value={form.deviceCategory} onChange={e => setForm({ ...form, deviceCategory: e.target.value })}><option value="">Select Category</option>{deviceCategories.map(d => <option key={d.id} value={d.id}>{d.icon} {d.name}</option>)}</Select></Field>
+        <Field label="Make / Brand"><Input value={form.deviceBrand} onChange={e => setForm({ ...form, deviceBrand: e.target.value })} placeholder="e.g. ABB, Siemens, Yaskawa" /></Field>
+        <Field label="Model No."><Input value={form.deviceModel} onChange={e => setForm({ ...form, deviceModel: e.target.value })} placeholder="e.g. ACS580, KTP700" /></Field>
+        <Field label="Serial Number"><Input value={form.serialNumber} onChange={e => setForm({ ...form, serialNumber: e.target.value })} placeholder="Equipment serial number" /></Field>
+        <Field label="Assign Technician"><Select value={form.assignedTo} onChange={e => setForm({ ...form, assignedTo: e.target.value })}><option value="">Assign Later</option>{technicians.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
+      </div>
+
+      <Field label="Problem / Fault Description" required><TextArea value={form.problemDescription} onChange={e => setForm({ ...form, problemDescription: e.target.value })} placeholder="Describe the fault, error codes, symptoms in detail..." /></Field>
+
+      {/* ACCESSORIES SECTION */}
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, marginBottom: 16, background: C.surface2 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 12 }}>📎 Accessories Received With Equipment</div>
+        {form.accessories.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+            {form.accessories.map(acc => (
+              <span key={acc} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", background: C.accent + "20", borderRadius: 6, fontSize: 12, color: C.accent, fontWeight: 500 }}>
+                {acc}<button onClick={() => toggleAcc(acc)} style={{ background: "none", border: "none", cursor: "pointer", color: C.accent, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div style={{ position: "relative" }}>
+          <Input value={accSearch} onChange={e => { setAccSearch(e.target.value); setShowAccDropdown(true); }} onFocus={() => setShowAccDropdown(true)} placeholder="Search or select accessories..." style={{ background: C.surface }} />
+          {showAccDropdown && filteredAcc.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, maxHeight: 200, overflow: "auto", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, marginTop: 4, zIndex: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
+              {filteredAcc.slice(0, 12).map(acc => (
+                <div key={acc} onClick={() => { toggleAcc(acc); setAccSearch(""); }} style={{ padding: "8px 14px", fontSize: 13, cursor: "pointer", color: C.text, borderBottom: `1px solid ${C.border}08` }} onMouseEnter={e => e.target.style.background = C.surface2} onMouseLeave={e => e.target.style.background = "transparent"}>{acc}</div>
+              ))}
+              <div onClick={() => setShowAccDropdown(false)} style={{ padding: "6px 14px", fontSize: 11, color: C.textMuted, cursor: "pointer", textAlign: "center", borderTop: `1px solid ${C.border}` }}>Close ↑</div>
+            </div>
+          )}
+        </div>
+        <div style={{ marginTop: 10 }}><Input value={form.customAccessories} onChange={e => setForm({ ...form, customAccessories: e.target.value })} placeholder="Other accessories not in list (type manually)..." style={{ background: C.surface, fontSize: 12 }} /></div>
+      </div>
+
+      <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 8 }}>
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={() => { setShowAccDropdown(false); onSubmit(form); }} disabled={!valid}>Create Job Sheet</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  VIEW / EDIT JOB MODAL
+// ═══════════════════════════════════════════════════════════════════════════
+function ViewJobModal({ job, user, getCustomer, getUser, getDevice, onClose, onUpdate, onPrint, technicians }) {
+  const cust = getCustomer(job.customerId); const dev = getDevice(job.deviceCategory); const tech = getUser(job.assignedTo); const creator = getUser(job.createdBy);
+  const isTech = user.role === ROLES.TECHNICIAN; const canEdit = can(user.role, "all") || isTech;
+  const [editInspection, setEditInspection] = useState(false);
+  const [editEstimate, setEditEstimate] = useState(false);
+  const [inspection, setInspection] = useState(job.inspectionReport);
+  const [estimate, setEstimate] = useState(job.estimate);
+  const [notes, setNotes] = useState(job.notes);
+  const statusIdx = STATUS_FLOW.indexOf(job.status);
+  const nextStatus = statusIdx < STATUS_FLOW.length - 1 ? STATUS_FLOW[statusIdx + 1] : null;
+  const allAcc = [...(job.accessories || []), ...(job.customAccessories ? [job.customAccessories] : [])];
+
+  return (
+    <Modal title={`Job Sheet — ${job.id}`} onClose={onClose} wide>
+      {/* Status Bar */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, overflow: "auto", padding: "0 0 8px" }}>
+        {STATUS_FLOW.map((s, i) => (
+          <div key={s} style={{ flex: 1, padding: "8px 4px", textAlign: "center", fontSize: 10, fontWeight: 700, borderRadius: 6, background: i <= statusIdx ? STATUS_COLORS[s] + "22" : C.surface2, color: i <= statusIdx ? STATUS_COLORS[s] : C.textMuted, whiteSpace: "nowrap", border: s === job.status ? `2px solid ${STATUS_COLORS[s]}` : "2px solid transparent", textTransform: "uppercase", letterSpacing: 0.5 }}>{s}</div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <Badge label={job.serviceType || "Carry-In"} color={job.serviceType === "On-Site" ? C.warning : C.accent} />
+        <Badge label={job.status} color={STATUS_COLORS[job.status]} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <Card style={{ padding: 16 }}>
+          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 10 }}>Customer / Company</div>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{cust?.name}</div>
+          {cust?.contactPerson && <div style={{ fontSize: 13, color: C.textDim, marginBottom: 2 }}>👤 {cust.contactPerson}</div>}
+          <div style={{ fontSize: 13, color: C.textDim }}>{cust?.phone} · {cust?.email}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>{cust?.address}</div>
+          {cust?.gstNo && <div style={{ display: "inline-flex", gap: 6, padding: "3px 8px", background: C.surface2, borderRadius: 4, marginTop: 8, alignItems: "center" }}><span style={{ fontSize: 10, fontWeight: 700, color: C.textMuted }}>GST</span><span style={{ fontSize: 12, fontFamily: MONO, fontWeight: 600, color: C.text }}>{cust.gstNo}</span></div>}
+        </Card>
+        <Card style={{ padding: 16 }}>
+          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 10 }}>Equipment</div>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{dev?.icon} {dev?.name}</div>
+          <div style={{ fontSize: 13, color: C.textDim }}>{job.deviceBrand} {job.deviceModel}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, fontFamily: MONO, marginTop: 4 }}>S/N: {job.serialNumber || "—"}</div>
+        </Card>
+      </div>
+
+      {allAcc.length > 0 && (
+        <Card style={{ padding: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 10 }}>📎 Accessories Received</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{allAcc.map((acc, i) => (<span key={i} style={{ padding: "4px 10px", background: C.surface2, borderRadius: 6, fontSize: 12, color: C.text }}>{acc}</span>))}</div>
+        </Card>
+      )}
+
+      <Card style={{ padding: 16, marginBottom: 16 }}><div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>Problem / Fault Description</div><div style={{ fontSize: 14, color: C.text, lineHeight: 1.5 }}>{job.problemDescription}</div></Card>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <Card style={{ padding: 16 }}>
+          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>Assigned Technician</div>
+          {can(user.role, "all") ? (<Select value={job.assignedTo || ""} onChange={e => onUpdate({ assignedTo: e.target.value, status: job.status === "Created" && e.target.value ? "Assigned" : job.status })}><option value="">Unassigned</option>{technicians.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>) : (<div style={{ fontSize: 14, fontWeight: 600 }}>{tech?.name || "Unassigned"}</div>)}
+        </Card>
+        <Card style={{ padding: 16 }}><div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>Created</div><div style={{ fontSize: 14 }}>{new Date(job.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</div><div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>by {creator?.name}</div></Card>
+      </div>
+
+      {/* Inspection */}
+      <Card style={{ padding: 16, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: "uppercase" }}>Inspection / Diagnostic Report</div>
+          {(isTech || can(user.role, "all")) && !editInspection && <Btn variant="ghost" small onClick={() => setEditInspection(true)}>Edit</Btn>}
+        </div>
+        {editInspection ? (<div><TextArea value={inspection} onChange={e => setInspection(e.target.value)} placeholder="Enter inspection findings, fault diagnosis..." /><div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}><Btn variant="secondary" small onClick={() => { setEditInspection(false); setInspection(job.inspectionReport); }}>Cancel</Btn><Btn small onClick={() => { onUpdate({ inspectionReport: inspection }); setEditInspection(false); }}>Save</Btn></div></div>)
+        : (<div style={{ fontSize: 14, color: job.inspectionReport ? C.text : C.textMuted, lineHeight: 1.5 }}>{job.inspectionReport || "Not yet submitted"}</div>)}
+      </Card>
+
+      {/* Estimate */}
+      <Card style={{ padding: 16, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: "uppercase" }}>Estimate</div>
+          {(isTech || can(user.role, "all")) && !editEstimate && <Btn variant="ghost" small onClick={() => setEditEstimate(true)}>Edit</Btn>}
+        </div>
+        {editEstimate ? (<div><Input type="number" value={estimate} onChange={e => setEstimate(parseInt(e.target.value) || 0)} placeholder="Enter amount in ₹" /><div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}><Btn variant="secondary" small onClick={() => { setEditEstimate(false); setEstimate(job.estimate); }}>Cancel</Btn><Btn small onClick={() => { onUpdate({ estimate }); setEditEstimate(false); }}>Save</Btn></div></div>)
+        : (<div style={{ fontSize: 20, fontWeight: 800, color: job.estimate ? C.success : C.textMuted, fontFamily: MONO }}>{job.estimate ? `₹${job.estimate.toLocaleString("en-IN")}` : "Not set"}</div>)}
+      </Card>
+
+      {/* Notes */}
+      <Card style={{ padding: 16, marginBottom: 20 }}>
+        <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>Notes</div>
+        {canEdit ? (<div><TextArea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add notes..." />{notes !== job.notes && <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}><Btn small onClick={() => onUpdate({ notes })}>Save Notes</Btn></div>}</div>)
+        : (<div style={{ fontSize: 14, color: job.notes ? C.text : C.textMuted }}>{job.notes || "No notes"}</div>)}
+      </Card>
+
+      <div style={{ display: "flex", gap: 12, justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div>{can(user.role, "all") && <Btn variant="secondary" onClick={onPrint}>🖨️ Print Job Sheet</Btn>}</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {nextStatus && (isTech || can(user.role, "all")) && <Btn variant="success" onClick={() => onUpdate({ status: nextStatus })}>Advance → {nextStatus}</Btn>}
+          <Btn variant="secondary" onClick={onClose}>Close</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ADD CUSTOMER MODAL (with GST)
+// ═══════════════════════════════════════════════════════════════════════════
+function AddCustomerModal({ onSubmit, onClose }) {
+  const [form, setForm] = useState({ name: "", contactPerson: "", phone: "", email: "", address: "", gstNo: "" });
+  return (
+    <Modal title="Add Customer" onClose={onClose}>
+      <Field label="Company / Customer Name" required><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Company or individual name" /></Field>
+      <Field label="Contact Person"><Input value={form.contactPerson} onChange={e => setForm({ ...form, contactPerson: e.target.value })} placeholder="Primary contact person" /></Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+        <Field label="Phone" required><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="10-digit number" /></Field>
+        <Field label="Email"><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="email@company.com" /></Field>
+      </div>
+      <Field label="GST Number"><Input value={form.gstNo} onChange={e => setForm({ ...form, gstNo: e.target.value.toUpperCase() })} placeholder="e.g. 18AABCU9603R1ZM" maxLength={15} style={{ fontFamily: MONO, letterSpacing: 1 }} /><div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>15-digit GSTIN (optional)</div></Field>
+      <Field label="Address"><TextArea value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Full address with PIN code" /></Field>
+      <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 8 }}><Btn variant="secondary" onClick={onClose}>Cancel</Btn><Btn onClick={() => onSubmit(form)} disabled={!form.name || !form.phone}>Add Customer</Btn></div>
+    </Modal>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ADD EQUIPMENT CATEGORY MODAL
+// ═══════════════════════════════════════════════════════════════════════════
+function AddDeviceCategoryModal({ onSubmit, onClose }) {
+  const [form, setForm] = useState({ name: "", icon: "⚡" });
+  const icons = ["⚡", "⚙️", "🔲", "🖥️", "🔌", "🔋", "🔧", "🏭", "📦", "📡", "🔀", "🌡️", "⏱️", "🔗", "📊", "📺", "🎛️", "💡", "💻", "🔩"];
+  return (
+    <Modal title="Add Equipment Category" onClose={onClose}>
+      <Field label="Category Name" required><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Stepper Motor, PID Controller" /></Field>
+      <Field label="Icon"><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{icons.map(ic => (<button key={ic} onClick={() => setForm({ ...form, icon: ic })} style={{ width: 40, height: 40, borderRadius: 8, border: form.icon === ic ? `2px solid ${C.accent}` : `1px solid ${C.border}`, background: form.icon === ic ? C.accentDim : C.surface2, fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{ic}</button>))}</div></Field>
+      <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 8 }}><Btn variant="secondary" onClick={onClose}>Cancel</Btn><Btn onClick={() => onSubmit(form)} disabled={!form.name}>Add Category</Btn></div>
+    </Modal>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PRINT LABEL MODAL
+// ═══════════════════════════════════════════════════════════════════════════
+function PrintLabelModal({ job, settings, onClose }) {
+  const [type, setType] = useState(settings.type);
+  const [copies, setCopies] = useState(settings.copies);
+  const [labelSize, setLabelSize] = useState(settings.labelSize);
+  const handlePrint = () => {
+    const [lw, lh] = labelSize.split("x").map(Number);
+    const labelHtml = `<div style="text-align:center;padding:10px;font-family:Arial,sans-serif;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:6px;">${job.id}</div>
+      ${type === "qr" ? `<svg width="100" height="100" viewBox="0 0 120 120"><rect width="120" height="120" fill="white"/>${generateQRMatrix(job.id).map((row, i) => row.map((cell, j) => cell ? `<rect x="${j*(120/21)}" y="${i*(120/21)}" width="${120/21}" height="${120/21}" fill="black"/>` : "").join("")).join("")}</svg>` : `<div style="font-family:monospace;font-size:12px;letter-spacing:2px;margin:10px 0;">${job.id}</div>`}
+      <div style="font-size:10px;color:#666;margin-top:6px;">${job.serviceType || "Carry-In"} | Scan to view</div>
+      <div style="font-size:9px;color:#999;margin-top:2px;">Label: ${lw}×${lh}mm · Copies: ${copies}</div>
+    </div>`;
+    printContent(labelHtml, `Label - ${job.id}`);
+  };
+  return (
+    <Modal title={`Print Label — ${job.id}`} onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 24, padding: 24, background: "#fff", borderRadius: 8 }}>{type === "qr" ? <QRCode text={job.id} size={140} /> : <Barcode text={job.id} width={220} height={70} />}</div>
+      <Field label="Label Type"><Select value={type} onChange={e => setType(e.target.value)}><option value="qr">QR Code</option><option value="barcode">Barcode</option></Select></Field>
+      <Field label="Label Size"><Select value={labelSize} onChange={e => setLabelSize(e.target.value)}><option value="50x25">50 × 25 mm</option><option value="50x30">50 × 30 mm</option><option value="60x40">60 × 40 mm</option><option value="70x35">70 × 35 mm</option></Select></Field>
+      <Field label="Number of Copies"><Input type="number" min="1" max="20" value={copies} onChange={e => setCopies(parseInt(e.target.value) || 1)} /></Field>
+      <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 12 }}><Btn variant="secondary" onClick={onClose}>Cancel</Btn><Btn onClick={handlePrint}>🏷️ Print {copies} Label{copies > 1 ? "s" : ""}</Btn></div>
+    </Modal>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  MY PASSWORD MODAL (available to ALL roles from sidebar)
+// ═══════════════════════════════════════════════════════════════════════════
+function MyPasswordModal({ user, users, setUsers, onClose, showToast }) {
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [error, setError] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+
+  const passwordStrength = (pw) => {
+    if (!pw) return { label: "", color: "", percent: 0 };
+    let score = 0;
+    if (pw.length >= 4) score++;
+    if (pw.length >= 8) score++;
+    if (/[A-Z]/.test(pw)) score++;
+    if (/[0-9]/.test(pw)) score++;
+    if (/[^A-Za-z0-9]/.test(pw)) score++;
+    if (score <= 1) return { label: "Weak", color: C.danger, percent: 20 };
+    if (score <= 2) return { label: "Fair", color: C.warning, percent: 40 };
+    if (score <= 3) return { label: "Good", color: "#f59e0b", percent: 60 };
+    if (score <= 4) return { label: "Strong", color: C.success, percent: 80 };
+    return { label: "Very Strong", color: "#059669", percent: 100 };
+  };
+
+  const strength = passwordStrength(newPw);
+  const match = newPw && confirmPw && newPw === confirmPw;
+  const mismatch = newPw && confirmPw && newPw !== confirmPw;
+
+  const handleSubmit = () => {
+    setError("");
+    const realUser = users.find(u => u.id === user.id);
+    if (!realUser) { setError("User not found"); return; }
+    if (currentPw !== realUser.password) { setError("Current password is incorrect"); return; }
+    if (newPw.length < 4) { setError("New password must be at least 4 characters"); return; }
+    if (newPw === currentPw) { setError("New password must be different from current password"); return; }
+    if (newPw !== confirmPw) { setError("New passwords do not match"); return; }
+    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, password: newPw } : u));
+    showToast("Password changed successfully! Use new password on next login.");
+    onClose();
+  };
+
+  const getRoleColor = (role) => role === ROLES.ADMIN ? C.danger : role === ROLES.MANAGER ? C.warning : role === ROLES.FRONT_DESK ? "#8b5cf6" : C.accent;
+
+  return (
+    <Modal title="Change My Password" onClose={onClose}>
+      {/* User Info */}
+      <div style={{ display: "flex", gap: 14, alignItems: "center", padding: "14px 16px", background: C.surface2, borderRadius: 10, marginBottom: 24 }}>
+        <div style={{ width: 48, height: 48, borderRadius: 24, background: getRoleColor(user.role) + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: getRoleColor(user.role) }}>{user.name[0]}</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{user.name}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, fontFamily: MONO }}>{user.email}</div>
+        </div>
+        <Badge label={ROLE_LABELS[user.role]} color={getRoleColor(user.role)} />
+      </div>
+
+      {/* Current Password */}
+      <Field label="Current Password" required>
+        <div style={{ position: "relative" }}>
+          <Input type={showCurrent ? "text" : "password"} value={currentPw} onChange={e => { setCurrentPw(e.target.value); setError(""); }} placeholder="Enter your current password" style={{ paddingRight: 44 }} />
+          <button onClick={() => setShowCurrent(!showCurrent)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: C.textMuted, fontSize: 12, fontFamily: FONT }}>{showCurrent ? "Hide" : "Show"}</button>
+        </div>
+      </Field>
+
+      {/* Divider */}
+      <div style={{ height: 1, background: C.border, margin: "8px 0 20px" }} />
+
+      {/* New Password */}
+      <Field label="New Password" required>
+        <div style={{ position: "relative" }}>
+          <Input type={showNew ? "text" : "password"} value={newPw} onChange={e => { setNewPw(e.target.value); setError(""); }} placeholder="Enter new password (min 4 chars)" style={{ paddingRight: 44 }} />
+          <button onClick={() => setShowNew(!showNew)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: C.textMuted, fontSize: 12, fontFamily: FONT }}>{showNew ? "Hide" : "Show"}</button>
+        </div>
+        {/* Strength meter */}
+        {newPw && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ height: 4, borderRadius: 2, background: C.surface2, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: strength.percent + "%", background: strength.color, borderRadius: 2, transition: "all 0.3s" }} />
+            </div>
+            <div style={{ fontSize: 11, color: strength.color, fontWeight: 600, marginTop: 4 }}>Strength: {strength.label}</div>
+          </div>
+        )}
+      </Field>
+
+      {/* Confirm New Password */}
+      <Field label="Confirm New Password" required>
+        <Input type="password" value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setError(""); }} placeholder="Re-enter new password" onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+      </Field>
+
+      {/* Match/Mismatch indicators */}
+      {match && <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.success, fontSize: 12, marginBottom: 12 }}><Icon d={Icons.check} size={14} color={C.success} /> Passwords match</div>}
+      {mismatch && <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.danger, fontSize: 12, marginBottom: 12 }}><Icon d={Icons.x} size={14} color={C.danger} /> Passwords do not match</div>}
+
+      {/* Error */}
+      {error && <div style={{ color: C.danger, fontSize: 13, marginBottom: 16, padding: "10px 14px", background: C.danger + "12", borderRadius: 8, display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16 }}>⚠️</span> {error}</div>}
+
+      {/* Tips */}
+      <div style={{ padding: 12, background: C.surface2, borderRadius: 8, marginBottom: 20, fontSize: 12, color: C.textMuted, lineHeight: 1.6 }}>
+        <span style={{ fontWeight: 600, color: C.textDim }}>Password tips:</span> Use at least 8 characters with uppercase letters, numbers, and special characters for a strong password.
+      </div>
+
+      <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={handleSubmit} disabled={!currentPw || !newPw || !confirmPw}>🔑 Change Password</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(CRMApp));
+  </script>
+</body>
+</html>

@@ -1,69 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Service CRM — Industrial Electrical & Automation</title>
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
-  <meta name="version" content="1.5" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #root { height: 100%; width: 100%; overflow: hidden; }
-    body { background: #0a0e17; }
-    #loading { display:flex; align-items:center; justify-content:center; height:100vh; flex-direction:column; gap:16px; }
-    #loading .spinner { width:40px; height:40px; border:3px solid #1e293b; border-top:3px solid #22d3ee; border-radius:50%; animation:spin .8s linear infinite; }
-    #loading p { color:#64748b; font-size:14px; font-family:system-ui; }
-    @keyframes spin { to { transform:rotate(360deg); } }
-  </style>
-  <script>
-    if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(function(r) { for (var i of r) i.unregister(); }); }
-    if ('caches' in window) { caches.keys().then(function(n) { for (var k of n) caches.delete(k); }); }
-  </script>
-</head>
-<body>
-  <div id="root"><div id="loading"><div class="spinner"></div><p>Loading Service CRM...</p></div></div>
-
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-
-  <script>
-    // ═══════════════════════════════════════════════════════════════
-    //  FIREBASE CONFIG — Replace with YOUR values from Firebase Console
-    //  Without this, CRM works fine using browser localStorage only
-    // ═══════════════════════════════════════════════════════════════
-    var FIREBASE_CONFIG = {
-      apiKey: "YOUR_API_KEY_HERE",
-      authDomain: "YOUR_PROJECT.firebaseapp.com",
-      databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
-
-    window._fbDb = null;
-    try {
-      if (FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY_HERE") {
-        firebase.initializeApp(FIREBASE_CONFIG);
-        window._fbDb = firebase.database();
-        console.log("Firebase connected");
-      } else {
-        console.log("Firebase not configured - using localStorage");
-      }
-    } catch (e) { console.warn("Firebase init failed:", e); }
-  </script>
-
-  <!-- React 18 -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script type="text/babel">
-    const { useState, useEffect, useCallback, useRef, useMemo } = React;
-
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 
 // ─── SEED DATA ──────────────────────────────────────────────────────────────
 const ROLES = { ADMIN: "admin", MANAGER: "manager", FRONT_DESK: "front_desk", TECHNICIAN: "technician" };
@@ -274,7 +209,7 @@ const printContent = (htmlContent, title) => {
 // ═══════════════════════════════════════════════════════════════════════════
 //  MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════
-function CRMApp() {
+export default function CRMApp() {
   // ─── PERSISTENT STORAGE HELPERS (localStorage + IndexedDB fallback + Firebase) ───
   const storageAvailable = useRef(true);
   const [saveStatus, setSaveStatus] = useState("saved"); // "saved" | "saving" | "error"
@@ -2044,9 +1979,3 @@ function MyPasswordModal({ user, users, setUsers, onClose, showToast }) {
     </Modal>
   );
 }
-
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(React.createElement(CRMApp));
-  </script>
-</body>
-</html>
